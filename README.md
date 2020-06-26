@@ -37,8 +37,8 @@ Run the test
 ```
 . env/bin/activate
 python3 run.py \
-    --scylla-path path/to/scylla/bin
-    --migrate-path path/to/scylla/migrate
+    --scylla-path path/to/scylla/bin \
+    --migrate-path path/to/scylla/migrate \
     --replicator-path path/to/cdc/replicator
 ```
 
