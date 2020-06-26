@@ -33,6 +33,8 @@ experimental_features:
 
 workdir,W: workdir
 
+enable_repair_based_node_ops: false
+
 # To fill out:
 #seed_provider:
 #    - class_name: org.apache.cassandra.locator.SimpleSeedProvider
