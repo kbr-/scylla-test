@@ -14,9 +14,8 @@ import libtmux
 import re
 import os
 import signal
+import argparse
 
-from cassandra import ConsistencyLevel
-from cassandra.query import SimpleStatement
 from cassandra.cluster import Cluster
 
 @dataclass(frozen=True)
@@ -38,7 +37,7 @@ class LocalNodeEnv:
     cfg: NodeConfig
     opts: RunOpts
 
-def mk_run_script(opts: RunOpts, scylla_path: str) -> str:
+def mk_run_script(opts: RunOpts, scylla_path: Path) -> str:
     return """#!/bin/bash
 {path} \\
     --smp {smp} \\
@@ -116,7 +115,7 @@ class TmuxNode:
 
     # Create a directory for the node with configuration and run script,
     # create a tmux window, but don't start the node yet
-    def __init__(self, base_path: Path, env: LocalNodeEnv, sess: libtmux.Session):
+    def __init__(self, base_path: Path, env: LocalNodeEnv, sess: libtmux.Session, scylla_path: Path):
         self.name = env.cfg.ip_addr
         self.path = base_path / self.name
         self.env = env
@@ -156,7 +155,17 @@ TABLE_DEF_BASE = "create table if not exists ks.tb (pk int, ck int, v text, prim
 TABLE_DEF_MASTER = TABLE_DEF_BASE + " with cdc = {'enabled': true}"
 
 if __name__ == "__main__":
-    scylla_path = '/home/kbraun/dev/scylla/build/dev/scylla' # TODO
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--scylla-path', type=Path, required=True)
+    parser.add_argument('--replicator-path', type=Path, required=True)
+    parser.add_argument('--migrate-path', type=Path, required=True)
+    args = parser.parse_args()
+
+    scylla_path = args.scylla_path.resolve()
+    replicator_path = args.replicator_path.resolve()
+    migrate_path = args.migrate_path.resolve()
+    log('Scylla: {}\nReplicator: {}\nMigrate: {}'.format(scylla_path, replicator_path, migrate_path))
+
     cfg_tmpl: dict = load_cfg_template()
 
     run_id: str = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
@@ -174,10 +183,10 @@ if __name__ == "__main__":
     tmux_sess = serv.new_session(session_name = f'scylla-test-{run_id}', start_directory = run_path)
 
     master_envs = mk_dev_cluster_env(start = 10, num_nodes = 2)
-    master_nodes = [TmuxNode(run_path, e, tmux_sess) for e in master_envs]
+    master_nodes = [TmuxNode(run_path, e, tmux_sess, scylla_path) for e in master_envs]
 
     replica_envs = mk_dev_cluster_env(start = 20, num_nodes = 1)
-    replica_nodes = [TmuxNode(run_path, e, tmux_sess) for e in replica_envs]
+    replica_nodes = [TmuxNode(run_path, e, tmux_sess, scylla_path) for e in replica_envs]
 
     log('tmux session name:', f'scylla-test-{run_id}')
 
@@ -219,19 +228,19 @@ if __name__ == "__main__":
         log('Starting CS')
         cs_proc = stack.enter_context(subprocess.Popen([
             'cassandra-stress',
-            "user profile=cdc_replication_profile.yaml ops(update=1) cl=QUORUM duration=2m",
+            "user profile=cdc_replication_profile.yaml ops(update=1) cl=QUORUM duration=1m",
             "-port jmx=6868", "-mode cql3", "native", "-rate threads=1", "-log level=verbose interval=5", "-errors retries=999",
             "-node {}".format(master_nodes[0].ip())],
             stdout=cs_log, stderr=subprocess.STDOUT))
 
         log('Starting replicator')
         repl_proc = stack.enter_context(subprocess.Popen([
-            'java', '-cp', 'replicator.jar', 'com.scylladb.scylla.cdc.replicator.Main',
+            'java', '-cp', replicator_path, 'com.scylladb.scylla.cdc.replicator.Main',
             '-k', 'ks', '-t', 'tb', '-s', master_nodes[0].ip(), '-d', replica_nodes[0].ip(), '-cl', 'one'],
             stdout=repl_log, stderr=subprocess.STDOUT))
 
         log('Letting CS run for a while...')
-        time.sleep(30)
+        time.sleep(10)
 
         log('Bootstrapping new node')
         master_nodes[-1].start()
@@ -240,7 +249,7 @@ if __name__ == "__main__":
         cs_proc.wait()
         log('CS return code:', cs_proc.returncode)
 
-        log('Waiting for replicator to finish (30s)...')
+        log('Waiting for replicator to finish...')
         time.sleep(30)
         repl_proc.send_signal(signal.SIGINT)
         repl_proc.wait()
@@ -248,9 +257,9 @@ if __name__ == "__main__":
 
         log('Comparing table contents using scylla-migrate...')
         migrate_res = subprocess.run(
-            './scylla-migrate check --master-address {} --replica-address {}'
+            '{} check --master-address {} --replica-address {}'
             ' --ignore-schema-difference ks.tb'.format(
-                master_nodes[0].ip(), replica_nodes[0].ip()),
+                migrate_path, master_nodes[0].ip(), replica_nodes[0].ip()),
             shell = True, stdout = migrate_log, stderr = subprocess.STDOUT)
         log('Migrate return code:', migrate_res.returncode)
 
