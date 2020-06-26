@@ -69,6 +69,9 @@ def mk_dev_cluster_env(start: int, num_nodes: int) -> List[LocalNodeEnv]:
 
     return envs
 
+def log(*args):
+    print(datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), *args)
+
 # Returns an iterator to the file's lines.
 # If not able to retrieve a next line for 1 second, yields ''.
 # Remember to close it after usage, since it keeps the file opened.
@@ -91,7 +94,7 @@ def tail(path: str) -> Iterator[str]:
 
 def wait_for_init(scylla_log_lines: Iterator[str]) -> None:
     for l in scylla_log_lines:
-        print(l)
+        #log(l)
         ms = re.match(r".*Scylla.*initialization completed.*", l)
         if ms:
             return
@@ -139,11 +142,11 @@ class TmuxNode:
         self.window.panes[0].send_keys('./run.sh')
 
         log_file = self.path / 'scyllalog'
-        print('Waiting for node', self.name, 'to initialize...')
+        log('Waiting for node', self.name, 'to initialize...')
         while not log_file.is_file():
             time.sleep(1)
         wait_for_init_path(log_file)
-        print('Node', self.name, 'initialized.')
+        log('Node', self.name, 'initialized.')
 
 
 def keyspace_def(rf: int) -> str:
@@ -157,7 +160,7 @@ if __name__ == "__main__":
     cfg_tmpl: dict = load_cfg_template()
 
     run_id: str = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-    print('run ID:', run_id)
+    log('run ID:', run_id)
 
     runs_path = Path.cwd() / 'runs'
     run_path = runs_path / run_id
@@ -170,13 +173,13 @@ if __name__ == "__main__":
     serv = libtmux.Server()
     tmux_sess = serv.new_session(session_name = f'scylla-test-{run_id}', start_directory = run_path)
 
-    master_envs = mk_dev_cluster_env(start = 10, num_nodes = 4)
+    master_envs = mk_dev_cluster_env(start = 10, num_nodes = 2)
     master_nodes = [TmuxNode(run_path, e, tmux_sess) for e in master_envs]
 
     replica_envs = mk_dev_cluster_env(start = 20, num_nodes = 1)
     replica_nodes = [TmuxNode(run_path, e, tmux_sess) for e in replica_envs]
 
-    print('tmux session name:', f'scylla-test-{run_id}')
+    log('tmux session name:', f'scylla-test-{run_id}')
 
     def start_cluster(nodes: List[TmuxNode]):
         for n in nodes:
@@ -191,72 +194,72 @@ if __name__ == "__main__":
     cm = Cluster([n.ip() for n in master_nodes[:-1]])
     cr = Cluster([n.ip() for n in replica_nodes])
     with cm.connect() as s:
-        s.execute(keyspace_def(3))
+        s.execute(keyspace_def(1))
         s.execute(TABLE_DEF_MASTER)
     with cr.connect() as s:
         s.execute(keyspace_def(1))
         s.execute(TABLE_DEF_BASE)
 
-    print('Waiting 30s for the latest CDC generation to start...')
-    time.sleep(30)
+    w = tmux_sess.windows[0]
+    w.split_window(start_directory = run_path, attach = False)
+    w.split_window(start_directory = run_path, attach = False)
+    w.select_layout('even-vertical')
+    w.panes[0].send_keys('tail -F cs.log -n +1')
+    w.panes[1].send_keys('tail -F replicator.log -n +1')
+    w.panes[2].send_keys('tail -F migrate.log -n +1')
+
+    log('Waiting 5s for the latest CDC generation to start...')
+    time.sleep(5)
 
     with ExitStack() as stack:
         cs_log = stack.enter_context(open(run_path / 'cs.log', 'w'))
         repl_log = stack.enter_context(open(run_path / 'replicator.log', 'w'))
         migrate_log = stack.enter_context(open(run_path / 'migrate.log', 'w'))
 
-        print('Starting CS')
+        log('Starting CS')
         cs_proc = stack.enter_context(subprocess.Popen([
             'cassandra-stress',
-            "user profile=cdc_replication_profile.yaml ops(update=1) cl=QUORUM duration=5m",
-            "-port jmx=6868", "-mode cql3", "native", "-rate threads=1", "-log interval=5", "-errors retries=999",
+            "user profile=cdc_replication_profile.yaml ops(update=1) cl=QUORUM duration=2m",
+            "-port jmx=6868", "-mode cql3", "native", "-rate threads=1", "-log level=verbose interval=5", "-errors retries=999",
             "-node {}".format(master_nodes[0].ip())],
             stdout=cs_log, stderr=subprocess.STDOUT))
 
-        print('Starting replicator')
+        log('Starting replicator')
         repl_proc = stack.enter_context(subprocess.Popen([
             'java', '-cp', 'replicator.jar', 'com.scylladb.scylla.cdc.replicator.Main',
             '-k', 'ks', '-t', 'tb', '-s', master_nodes[0].ip(), '-d', replica_nodes[0].ip(), '-cl', 'one'],
             stdout=repl_log, stderr=subprocess.STDOUT))
 
-        print('Letting CS run for a while...')
-        time.sleep(60)
+        log('Letting CS run for a while...')
+        time.sleep(30)
 
-        print('Bootstrapping new node')
+        log('Bootstrapping new node')
         master_nodes[-1].start()
 
-        print('Waiting for CS to finish...')
+        log('Waiting for CS to finish...')
         cs_proc.wait()
-        print('CS return code:', cs_proc.returncode)
+        log('CS return code:', cs_proc.returncode)
 
-        print('Waiting for replicator to finish (30s)...')
+        log('Waiting for replicator to finish (30s)...')
         time.sleep(30)
         repl_proc.send_signal(signal.SIGINT)
         repl_proc.wait()
-        print('Replicator return code:', repl_proc.returncode)
+        log('Replicator return code:', repl_proc.returncode)
 
-        print('Comparing table contents using scylla-migrate...')
+        log('Comparing table contents using scylla-migrate...')
         migrate_res = subprocess.run(
             './scylla-migrate check --master-address {} --replica-address {}'
             ' --ignore-schema-difference ks.tb'.format(
                 master_nodes[0].ip(), replica_nodes[0].ip()),
             shell = True, stdout = migrate_log, stderr = subprocess.STDOUT)
-        print('Migrate return code:', migrate_res.returncode)
+        log('Migrate return code:', migrate_res.returncode)
 
     with open(run_path / 'migrate.log', 'r') as f:
         ok = 'Consistency check OK.\n' in (line for line in f)
 
     if ok:
-        print('Consistency OK')
+        log('Consistency OK')
     else:
-        print('Inconsistency detected')
+        log('Inconsistency detected')
 
-    w = tmux_sess.windows[0]
-    w.split_window(start_directory = run_path, attach = False)
-    w.split_window(start_directory = run_path, attach = False)
-    w.select_layout('even-vertical')
-    w.panes[0].send_keys('less cs.log')
-    w.panes[1].send_keys('less replicator.log')
-    w.panes[2].send_keys('less migrate.log')
-
-    print('tmux session name:', f'scylla-test-{run_id}')
+    log('tmux session name:', f'scylla-test-{run_id}')
