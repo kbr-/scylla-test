@@ -60,3 +60,24 @@ tmux a -t scylla-test-2020-06-26_16-58-36
 the first window shows the tool logs, and consecutive windows have Scylla instances running (you can scroll between windows using `C-b n` and `C-b p` and switch panes within a window using `C-b {arrow}`, where `{arrow}` is an arrow key). You can stop a node and then restart it with `run.sh` in the appropriate directory. `scyllalog` contains the node's logs.
 
 If you want to run the test again, stop the previous nodes first: the test uses hardcoded IPs.
+
+### Useful snippets
+Some useful snippets in the `snippets` directory:
+- `which_gen.py`:  print CDC generation timestamps, their sizes, and point the one which contains the given stream.
+ ```
+ $ python3 snippets/which_gen.py 127.0.0.10 0x813aaaaaaaaaaaab70ed0d48264a3cad
+2020-06-26 14:58:58.449000 768
+2020-06-26 14:59:49.826000 1536
+813aaaaaaaaaaaab70ed0d48264a3cad is in 2020-06-26 14:58:58.449000
+```
+- `latest_cdc_time.py`: give the greatest `cdc$time` in `ks.tb_scylla_cdc_log`
+```
+$ python3 snippets/latest_cdc_time.py 127.0.0.10
+Row(cdc_time=UUID('b74b2a80-b7bd-11ea-eb9f-b0c9b6407d33'))
+```
+- `get_time.py`: convert `timeuuid` to timestamp (in microseconds) and print as UTC date-time
+```
+$ python3 snippets/get_time.py b74b2a80-b7bd-11ea-eb9f-b0c9b6407d33
+1593183604008000
+2020-06-26 15:00:04
+```
