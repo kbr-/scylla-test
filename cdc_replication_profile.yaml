@@ -1,24 +1,13 @@
 keyspace: ks
 table: tb
 
-table_definition: |
-
-  CREATE TABLE IF NOT EXISTS ks.tb (
-    pk int,
-    ck int,
-    v text,
-    PRIMARY KEY (pk, ck)
-  ) WITH cdc = {'enabled': true}
-
 columnspec:
-  - name: pk
-    population: uniform(1..10k)
-
-  - name: ck
-    population: uniform(1..10k)
-
-  - name: v
-    population: exp(1..5)
+  - name: pk1
+    population: uniform(1..1)
+  - name: ck1
+    population: uniform(1..1)
+  - name: v1
+    size: fixed(4)
 
 insert:
   partitions: fixed(1)
@@ -26,5 +15,5 @@ insert:
 
 queries:
   update:
-    cql: update ks.tb set v = ? where pk = ? and ck = ?
+    cql: update ks.tb set v1 = ? where pk1 = ? and ck1 = ?
     fields: samerow

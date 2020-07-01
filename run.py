@@ -151,7 +151,12 @@ class TmuxNode:
 def keyspace_def(rf: int) -> str:
     return f"create keyspace if not exists ks with replication = {{'class': 'SimpleStrategy', 'replication_factor': {rf}}}"
 
-TABLE_DEF_BASE = "create table if not exists ks.tb (pk int, ck int, v text, primary key (pk, ck))"
+TABLE_DEF_BASE = """create table if not exists ks.tb (
+    pk1 int,
+    ck1 int,
+    v1 blob,
+    PRIMARY KEY (pk1, ck1))
+"""
 TABLE_DEF_MASTER = TABLE_DEF_BASE + " with cdc = {'enabled': true}"
 
 if __name__ == "__main__":
@@ -217,8 +222,8 @@ if __name__ == "__main__":
     w.panes[1].send_keys('tail -F replicator.log -n +1')
     w.panes[2].send_keys('tail -F migrate.log -n +1')
 
-    log('Waiting 5s for the latest CDC generation to start...')
-    time.sleep(5)
+    log('Waiting 10s for the latest CDC generation to start...')
+    time.sleep(10)
 
     with ExitStack() as stack:
         cs_log = stack.enter_context(open(run_path / 'cs.log', 'w'))
@@ -228,8 +233,8 @@ if __name__ == "__main__":
         log('Starting CS')
         cs_proc = stack.enter_context(subprocess.Popen([
             'cassandra-stress',
-            "user profile=cdc_replication_profile.yaml ops(update=1) cl=QUORUM duration=1m",
-            "-port jmx=6868", "-mode cql3", "native", "-rate threads=1", "-log level=verbose interval=5", "-errors retries=999",
+            "user profile=cdc_replication_profile.yaml ops(update=1) cl=QUORUM duration=3s",
+            "-port jmx=6868", "-mode cql3", "native", "-rate threads=1", "-log level=verbose interval=1", "-errors retries=999",
             "-node {}".format(master_nodes[0].ip())],
             stdout=cs_log, stderr=subprocess.STDOUT))
 
@@ -239,11 +244,11 @@ if __name__ == "__main__":
             '-k', 'ks', '-t', 'tb', '-s', master_nodes[0].ip(), '-d', replica_nodes[0].ip(), '-cl', 'one'],
             stdout=repl_log, stderr=subprocess.STDOUT))
 
-        log('Letting CS run for a while...')
-        time.sleep(10)
+        #log('Letting CS run for a while...')
+        #time.sleep(10)
 
-        log('Bootstrapping new node')
-        master_nodes[-1].start()
+        #log('Bootstrapping new node')
+        #master_nodes[-1].start()
 
         log('Waiting for CS to finish...')
         cs_proc.wait()
