@@ -1,15 +1,6 @@
 keyspace: ks
 table: tb
 
-table_definition: |
-
-  CREATE TABLE IF NOT EXISTS ks.tb (
-    pk int,
-    ck int,
-    v text,
-    PRIMARY KEY (pk, ck)
-  ) WITH cdc = {'enabled': true}
-
 columnspec:
   - name: pk
     population: uniform(1..10k)
@@ -18,11 +9,7 @@ columnspec:
     population: uniform(1..10k)
 
   - name: v
-    population: exp(1..5)
-
-insert:
-  partitions: fixed(1)
-  batchtype: UNLOGGED
+    size: exp(1..5)
 
 queries:
   update:
