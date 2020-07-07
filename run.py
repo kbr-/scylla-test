@@ -15,6 +15,7 @@ import re
 import os
 import signal
 import argparse
+import random
 
 from cassandra.cluster import Cluster
 
@@ -152,12 +153,26 @@ if __name__ == "__main__":
     parser.add_argument('--scylla-path', type=Path, required=True)
     parser.add_argument('--replicator-path', type=Path, required=True)
     parser.add_argument('--migrate-path', type=Path, required=True)
+    parser.add_argument('--gemini', default=False, action='store_true')
+    parser.add_argument('--gemini-seed', type=int)
     args = parser.parse_args()
 
     scylla_path = args.scylla_path.resolve()
     replicator_path = args.replicator_path.resolve()
     migrate_path = args.migrate_path.resolve()
-    log('Scylla: {}\nReplicator: {}\nMigrate: {}'.format(scylla_path, replicator_path, migrate_path))
+    use_gemini = args.gemini
+    log('Scylla: {}\nReplicator: {}\nMigrate: {}\nuse_gemini: {}'.format(
+        scylla_path, replicator_path, migrate_path, use_gemini))
+
+    gemini_seed = args.gemini_seed
+    if gemini_seed is None:
+        gemini_seed = random.randint(1, 1000)
+    if gemini_seed < 1:
+        print('Wrong gemini seed. Use a positive number.')
+        exit(1)
+
+    if use_gemini:
+        log(f'gemini seed: {gemini_seed}')
 
     cfg_tmpl: dict = load_cfg_template()
 
@@ -192,6 +207,11 @@ if __name__ == "__main__":
     start_replica.start()
     start_master.join()
     start_replica.join()
+
+    MASTER_RF = 1
+    #Hardcoded in gemini:
+    KS_NAME = 'ks1'
+    TABLE_NAME = 'table1'
     
     cm = Cluster([n.ip() for n in master_nodes[:-1]])
     cr = Cluster([n.ip() for n in replica_nodes])
@@ -200,7 +220,7 @@ if __name__ == "__main__":
     w.split_window(start_directory = run_path, attach = False)
     w.split_window(start_directory = run_path, attach = False)
     w.select_layout('even-vertical')
-    w.panes[0].send_keys('tail -F cs.log -n +1')
+    w.panes[0].send_keys('tail -F stressor.log -n +1')
     w.panes[1].send_keys('tail -F replicator.log -n +1')
     w.panes[2].send_keys('tail -F migrate.log -n +1')
 
@@ -208,31 +228,45 @@ if __name__ == "__main__":
     time.sleep(15)
 
     with ExitStack() as stack:
-        cs_log = stack.enter_context(open(run_path / 'cs.log', 'w'))
+        stressor_log = stack.enter_context(open(run_path / 'stressor.log', 'w'))
         repl_log = stack.enter_context(open(run_path / 'replicator.log', 'w'))
         migrate_log = stack.enter_context(open(run_path / 'migrate.log', 'w'))
 
-        log('Starting CS')
-        cs_proc = stack.enter_context(subprocess.Popen([
-            'cassandra-stress',
-            "user no-warmup profile=cdc_replication_profile.yaml ops(update=1) cl=QUORUM duration=1m",
-            "-port jmx=6868", "-mode cql3", "native", "-rate threads=1", "-log level=verbose interval=5", "-errors retries=999 ignore",
-            "-node {}".format(master_nodes[0].ip())],
-            stdout=cs_log, stderr=subprocess.STDOUT))
+        log('Starting stressor')
+        if use_gemini:
+            stressor_proc = stack.enter_context(subprocess.Popen([
+                'gemini',
+                '-d', '--duration', '3m', '--warmup', '0', '-c', '1', '-m', 'write', '--non-interactive', '--cql-features', 'basic',
+                '--max-mutation-retries', '100', '--max-mutation-retries-backoff', '100ms',
+                '--replication-strategy', f"{{'class': 'SimpleStrategy', 'replication_factor': '{MASTER_RF}'}}",
+                '--table-options', "cdc = {'enabled': true}",
+                '--test-cluster={}'.format(master_nodes[0].ip()),
+                '--seed', str(gemini_seed),
+                '--verbose',
+                '--level', 'info'
+            ], stdout=stressor_log, stderr=subprocess.STDOUT))
+        else:
+            stressor_proc = stack.enter_context(subprocess.Popen([
+                'cassandra-stress',
+                "user no-warmup profile=cdc_replication_profile.yaml ops(update=1) cl=QUORUM duration=3m",
+                "-port jmx=6868", "-mode cql3", "native", "-rate threads=1", "-log level=verbose interval=5", "-errors retries=999 ignore",
+                "-node {}".format(master_nodes[0].ip())],
+                stdout=stressor_log, stderr=subprocess.STDOUT))
 
-        log('Letting CS run for a while...')
-        time.sleep(5)
+        log('Letting stressor run for a while...')
+        # Sleep long enough for stressor to create the keyspace
+        time.sleep(10)
 
         log('Fetching schema definitions from master cluster.')
+        cm.control_connection_timeout = 20
         with cm.connect() as _:
-            cm.refresh_schema_metadata()
-            ks = cm.metadata.keyspaces['ks']
+            cm.refresh_schema_metadata(max_schema_agreement_wait=10)
+            ks = cm.metadata.keyspaces[KS_NAME]
             ut_ddls = [t[1].as_cql_query() for t in ks.user_types.items()]
             table_ddls = []
             for name, table in ks.tables.items():
                 if name.endswith('_scylla_cdc_log'):
                     continue
-                # Don't enable CDC on the replica cluster
                 if 'cdc' in table.extensions:
                     del table.extensions['cdc']
                 table_ddls.append(table.as_cql_query())
@@ -240,31 +274,34 @@ if __name__ == "__main__":
         log('User types:\n{}'.format('\n'.join(ut_ddls)))
         log('Table definitions:\n{}'.format('\n'.join(table_ddls)))
 
+        log('Letting stressor run for a while...')
+        time.sleep(5)
+
         log('Creating schema on replica cluster.')
         with cr.connect() as sess:
-            sess.execute("create keyspace if not exists ks"
+            sess.execute(f"create keyspace if not exists {KS_NAME}"
                           " with replication = {'class': 'SimpleStrategy', 'replication_factor': 1}")
             for stmt in ut_ddls + table_ddls:
                 sess.execute(stmt)
 
-        log('Letting CS run for a while...')
+        log('Letting stressor run for a while...')
         time.sleep(5)
 
         log('Starting replicator')
         repl_proc = stack.enter_context(subprocess.Popen([
             'java', '-cp', replicator_path, 'com.scylladb.scylla.cdc.replicator.Main',
-            '-k', 'ks', '-t', 'tb', '-s', master_nodes[0].ip(), '-d', replica_nodes[0].ip(), '-cl', 'one'],
+            '-k', KS_NAME, '-t', TABLE_NAME, '-s', master_nodes[0].ip(), '-d', replica_nodes[0].ip(), '-cl', 'one'],
             stdout=repl_log, stderr=subprocess.STDOUT))
 
-        log('Letting CS run for a while...')
-        time.sleep(10)
+        log('Letting stressor run for a while...')
+        time.sleep(5)
 
         log('Bootstrapping new node')
         master_nodes[-1].start()
 
-        log('Waiting for CS to finish...')
-        cs_proc.wait()
-        log('CS return code:', cs_proc.returncode)
+        log('Waiting for stressor to finish...')
+        stressor_proc.wait()
+        log('Gemini return code:', stressor_proc.returncode)
 
         log('Waiting for replicator to finish...')
         time.sleep(30)
@@ -275,8 +312,9 @@ if __name__ == "__main__":
         log('Comparing table contents using scylla-migrate...')
         migrate_res = subprocess.run(
             '{} check --master-address {} --replica-address {}'
-            ' --ignore-schema-difference ks.tb'.format(
-                migrate_path, master_nodes[0].ip(), replica_nodes[0].ip()),
+            ' --ignore-schema-difference {}.{}'.format(
+                migrate_path, master_nodes[0].ip(), replica_nodes[0].ip(),
+                KS_NAME, TABLE_NAME),
             shell = True, stdout = migrate_log, stderr = subprocess.STDOUT)
         log('Migrate return code:', migrate_res.returncode)
 
