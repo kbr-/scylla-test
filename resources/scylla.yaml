@@ -26,8 +26,8 @@ commitlog_total_space_in_mb: -1
 
 murmur3_partitioner_ignore_msb_bits: 12
 
-experimental_features:
-    - cdc
+#experimental_features:
+#    - cdc
 #     - lwt
 #     - udf
 

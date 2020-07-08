@@ -70,7 +70,7 @@ def mk_dev_cluster_env(start: int, num_nodes: int) -> List[LocalNodeEnv]:
     return envs
 
 def log(*args):
-    print(datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), *args)
+    print(datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), flush=True, *args)
 
 # Returns an iterator to the file's lines.
 # If not able to retrieve a next line for 1 second, yields ''.
@@ -160,11 +160,9 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     scylla_path = args.scylla_path.resolve()
-    replicator_path = args.replicator_path.resolve()
-    migrate_path = args.migrate_path.resolve()
     use_gemini = args.gemini
-    log('Scylla: {}\nReplicator: {}\nMigrate: {}\nuse_gemini: {}'.format(
-        scylla_path, replicator_path, migrate_path, use_gemini))
+    log('Scylla: {}\nuse_gemini: {}'.format(
+        scylla_path, use_gemini))
 
     gemini_seed = args.gemini_seed
     if gemini_seed is None:
@@ -195,44 +193,26 @@ if __name__ == "__main__":
     master_envs = mk_dev_cluster_env(start = 10, num_nodes = 2)
     master_nodes = [TmuxNode(run_path, e, tmux_sess, scylla_path) for e in master_envs]
 
-    replica_envs = mk_dev_cluster_env(start = 20, num_nodes = 1)
-    replica_nodes = [TmuxNode(run_path, e, tmux_sess, scylla_path) for e in replica_envs]
-
     log('tmux session name:', f'scylla-test-{run_id}')
 
     def start_cluster(nodes: List[TmuxNode]):
         for n in nodes:
             n.start()
     start_master = Thread(target=start_cluster, args=[master_nodes[:-1]])
-    start_replica = Thread(target=start_cluster, args=[replica_nodes])
     start_master.start()
-    start_replica.start()
     start_master.join()
-    start_replica.join()
 
     MASTER_RF = 1
     #Hardcoded in gemini:
     KS_NAME = 'ks1'
-    TABLE_NAME = 'table1'
     
     cm = Cluster([n.ip() for n in master_nodes[:-1]])
-    cr = Cluster([n.ip() for n in replica_nodes])
 
     w = tmux_sess.windows[0]
-    w.split_window(start_directory = run_path, attach = False)
-    w.split_window(start_directory = run_path, attach = False)
-    w.select_layout('even-vertical')
     w.panes[0].send_keys('tail -F stressor.log -n +1')
-    w.panes[1].send_keys('tail -F replicator.log -n +1')
-    w.panes[2].send_keys('tail -F migrate.log -n +1')
-
-    log('Waiting for the latest CDC generation to start...')
-    time.sleep(15)
 
     with ExitStack() as stack:
         stressor_log = stack.enter_context(open(run_path / 'stressor.log', 'w'))
-        repl_log = stack.enter_context(open(run_path / 'replicator.log', 'w'))
-        migrate_log = stack.enter_context(open(run_path / 'migrate.log', 'w'))
 
         log('Starting stressor')
         if use_gemini:
@@ -241,7 +221,6 @@ if __name__ == "__main__":
                 '-d', '--duration', '3m', '--warmup', '0', '-c', '1', '-m', 'write', '--non-interactive', '--cql-features', 'basic',
                 '--max-mutation-retries', '100', '--max-mutation-retries-backoff', '100ms',
                 '--replication-strategy', f"{{'class': 'SimpleStrategy', 'replication_factor': '{MASTER_RF}'}}",
-                '--table-options', "cdc = {'enabled': true}",
                 '--test-cluster={}'.format(master_nodes[0].ip()),
                 '--seed', str(gemini_seed),
                 '--verbose',
@@ -250,7 +229,7 @@ if __name__ == "__main__":
         else:
             stressor_proc = stack.enter_context(subprocess.Popen([
                 'cassandra-stress',
-                "user no-warmup profile=cdc_replication_profile.yaml ops(update=1) cl=QUORUM duration=3m",
+                "user no-warmup profile=profile.yaml ops(update=1) cl=QUORUM duration=3m",
                 "-port jmx=6868", "-mode cql3", "native", "-rate threads=1", "-log level=verbose interval=5", "-errors retries=999 ignore",
                 "-node {}".format(master_nodes[0].ip())],
                 stdout=stressor_log, stderr=subprocess.STDOUT))
@@ -267,36 +246,13 @@ if __name__ == "__main__":
             ut_ddls = [t[1].as_cql_query() for t in ks.user_types.items()]
             table_ddls = []
             for name, table in ks.tables.items():
-                if name.endswith('_scylla_cdc_log'):
-                    continue
-                if 'cdc' in table.extensions:
-                    del table.extensions['cdc']
                 table_ddls.append(table.as_cql_query())
 
         log('User types:\n{}'.format('\n'.join(ut_ddls)))
         log('Table definitions:\n{}'.format('\n'.join(table_ddls)))
 
         log('Letting stressor run for a while...')
-        time.sleep(5)
-
-        log('Creating schema on replica cluster.')
-        with cr.connect() as sess:
-            sess.execute(f"create keyspace if not exists {KS_NAME}"
-                          " with replication = {'class': 'SimpleStrategy', 'replication_factor': 1}")
-            for stmt in ut_ddls + table_ddls:
-                sess.execute(stmt)
-
-        log('Letting stressor run for a while...')
-        time.sleep(5)
-
-        log('Starting replicator')
-        repl_proc = stack.enter_context(subprocess.Popen([
-            'java', '-cp', replicator_path, 'com.scylladb.scylla.cdc.replicator.Main',
-            '-k', KS_NAME, '-t', TABLE_NAME, '-s', master_nodes[0].ip(), '-d', replica_nodes[0].ip(), '-cl', 'one'],
-            stdout=repl_log, stderr=subprocess.STDOUT))
-
-        log('Letting stressor run for a while...')
-        time.sleep(5)
+        time.sleep(15)
 
         log('Bootstrapping new node')
         master_nodes[-1].start()
@@ -304,28 +260,5 @@ if __name__ == "__main__":
         log('Waiting for stressor to finish...')
         stressor_proc.wait()
         log('Gemini return code:', stressor_proc.returncode)
-
-        log('Waiting for replicator to finish...')
-        time.sleep(30)
-        repl_proc.send_signal(signal.SIGINT)
-        repl_proc.wait()
-        log('Replicator return code:', repl_proc.returncode)
-
-        log('Comparing table contents using scylla-migrate...')
-        migrate_res = subprocess.run(
-            '{} check --master-address {} --replica-address {}'
-            ' --ignore-schema-difference {}.{}'.format(
-                migrate_path, master_nodes[0].ip(), replica_nodes[0].ip(),
-                KS_NAME, TABLE_NAME),
-            shell = True, stdout = migrate_log, stderr = subprocess.STDOUT)
-        log('Migrate return code:', migrate_res.returncode)
-
-    with open(run_path / 'migrate.log', 'r') as f:
-        ok = 'Consistency check OK.\n' in (line for line in f)
-
-    if ok:
-        log('Consistency OK')
-    else:
-        log('Inconsistency detected')
 
     log('tmux session name:', f'scylla-test-{run_id}')

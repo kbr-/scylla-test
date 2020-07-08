@@ -11,7 +11,7 @@ table_definition: |
     pk int,
     ck int,
     v text,
-    primary key (pk, ck)) WITH cdc = {'enabled': true}
+    primary key (pk, ck))
 
 columnspec:
   - name: pk
