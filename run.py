@@ -217,8 +217,8 @@ if __name__ == "__main__":
     w.panes[1].send_keys('tail -F replicator.log -n +1')
     w.panes[2].send_keys('tail -F migrate.log -n +1')
 
-    log('Waiting 5s for the latest CDC generation to start...')
-    time.sleep(5)
+    log('Waiting for the latest CDC generation to start...')
+    time.sleep(15)
 
     with ExitStack() as stack:
         cs_log = stack.enter_context(open(run_path / 'cs.log', 'w'))
