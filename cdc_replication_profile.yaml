@@ -1,13 +1,13 @@
-keyspace: ks
-table: tb
+keyspace: ks1
+table: table1
 
 keyspace_definition: |
 
-  CREATE KEYSPACE IF NOT EXISTS ks WITH replication = {'class': 'SimpleStrategy', 'replication_factor': '1'} AND durable_writes = true;
+  CREATE KEYSPACE IF NOT EXISTS ks1 WITH replication = {'class': 'SimpleStrategy', 'replication_factor': '1'} AND durable_writes = true;
 
 table_definition: |
 
-  CREATE TABLE ks.tb (
+  CREATE TABLE ks1.table1 (
     pk int,
     ck int,
     v text,
@@ -25,5 +25,5 @@ columnspec:
 
 queries:
   update:
-    cql: update ks.tb set v = ? where pk = ? and ck = ?
+    cql: update ks1.table1 set v = ? where pk = ? and ck = ?
     fields: samerow
