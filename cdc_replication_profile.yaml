@@ -1,12 +1,24 @@
 keyspace: ks
 table: tb
 
+keyspace_definition: |
+
+  CREATE KEYSPACE IF NOT EXISTS ks WITH replication = {'class': 'SimpleStrategy', 'replication_factor': '1'} AND durable_writes = true;
+
+table_definition: |
+
+  CREATE TABLE ks.tb (
+    pk int,
+    ck int,
+    v text,
+    primary key (pk, ck)) WITH cdc = {'enabled': true}
+
 columnspec:
   - name: pk
-    population: uniform(1..10k)
+    population: uniform(1..1k)
 
   - name: ck
-    population: uniform(1..10k)
+    population: uniform(1..1k)
 
   - name: v
     size: exp(1..5)

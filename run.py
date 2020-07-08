@@ -147,13 +147,6 @@ class TmuxNode:
         wait_for_init_path(log_file)
         log('Node', self.name, 'initialized.')
 
-
-def keyspace_def(rf: int) -> str:
-    return f"create keyspace if not exists ks with replication = {{'class': 'SimpleStrategy', 'replication_factor': {rf}}}"
-
-TABLE_DEF_BASE = "create table if not exists ks.tb (pk int, ck int, v text, primary key (pk, ck))"
-TABLE_DEF_MASTER = TABLE_DEF_BASE + " with cdc = {'enabled': true}"
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--scylla-path', type=Path, required=True)
@@ -202,12 +195,6 @@ if __name__ == "__main__":
     
     cm = Cluster([n.ip() for n in master_nodes[:-1]])
     cr = Cluster([n.ip() for n in replica_nodes])
-    with cm.connect() as s:
-        s.execute(keyspace_def(1))
-        s.execute(TABLE_DEF_MASTER)
-    with cr.connect() as s:
-        s.execute(keyspace_def(1))
-        s.execute(TABLE_DEF_BASE)
 
     w = tmux_sess.windows[0]
     w.split_window(start_directory = run_path, attach = False)
@@ -228,10 +215,40 @@ if __name__ == "__main__":
         log('Starting CS')
         cs_proc = stack.enter_context(subprocess.Popen([
             'cassandra-stress',
-            "user profile=cdc_replication_profile.yaml ops(update=1) cl=QUORUM duration=1m",
-            "-port jmx=6868", "-mode cql3", "native", "-rate threads=1", "-log level=verbose interval=5", "-errors retries=999",
+            "user no-warmup profile=cdc_replication_profile.yaml ops(update=1) cl=QUORUM duration=1m",
+            "-port jmx=6868", "-mode cql3", "native", "-rate threads=1", "-log level=verbose interval=5", "-errors retries=999 ignore",
             "-node {}".format(master_nodes[0].ip())],
             stdout=cs_log, stderr=subprocess.STDOUT))
+
+        log('Letting CS run for a while...')
+        time.sleep(5)
+
+        log('Fetching schema definitions from master cluster.')
+        with cm.connect() as _:
+            cm.refresh_schema_metadata()
+            ks = cm.metadata.keyspaces['ks']
+            ut_ddls = [t[1].as_cql_query() for t in ks.user_types.items()]
+            table_ddls = []
+            for name, table in ks.tables.items():
+                if name.endswith('_scylla_cdc_log'):
+                    continue
+                # Don't enable CDC on the replica cluster
+                if 'cdc' in table.extensions:
+                    del table.extensions['cdc']
+                table_ddls.append(table.as_cql_query())
+
+        log('User types:\n{}'.format('\n'.join(ut_ddls)))
+        log('Table definitions:\n{}'.format('\n'.join(table_ddls)))
+
+        log('Creating schema on replica cluster.')
+        with cr.connect() as sess:
+            sess.execute("create keyspace if not exists ks"
+                          " with replication = {'class': 'SimpleStrategy', 'replication_factor': 1}")
+            for stmt in ut_ddls + table_ddls:
+                sess.execute(stmt)
+
+        log('Letting CS run for a while...')
+        time.sleep(5)
 
         log('Starting replicator')
         repl_proc = stack.enter_context(subprocess.Popen([
