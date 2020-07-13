@@ -139,6 +139,8 @@ class TmuxNode:
     # Start node and wait for initialization.
     # Assumes that `start` wasn't called yet.
     def start(self) -> None:
+        self.window.panes[0].send_keys('ulimit -Sn $(ulimit -Hn)')
+        self.window.panes[0].send_keys('ulimit -Sn')
         self.window.panes[0].send_keys('./run.sh')
 
         log_file = self.path / 'scyllalog'
