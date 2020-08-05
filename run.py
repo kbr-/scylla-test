@@ -150,6 +150,13 @@ class TmuxNode:
         wait_for_init_path(log_file)
         log('Node', self.name, 'initialized.')
 
+def cdc_opts(mode: str):
+    if mode == 'preimage':
+        return "{'enabled': true, 'preimage': true}"
+    if mode == 'postimage':
+        return "{'enabled': true, 'postimage': true}"
+    return "{'enabled': true}"
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--scylla-path', type=Path, required=True)
@@ -158,6 +165,7 @@ if __name__ == "__main__":
     parser.add_argument('--gemini', default=False, action='store_true')
     parser.add_argument('--gemini-seed', type=int)
     parser.add_argument('--single', default=False, action='store_true')
+    parser.add_argument('--mode', default='delta', choices=['delta','preimage','postimage'])
     args = parser.parse_args()
 
     scylla_path = args.scylla_path.resolve()
@@ -178,6 +186,11 @@ if __name__ == "__main__":
         log(f'gemini seed: {gemini_seed}')
 
     num_master_nodes = 1 if args.single else 3
+    mode = args.mode
+
+    if mode != 'delta' and not use_gemini:
+        print('preimage/postimage supported with gemini only')
+        exit(1)
 
     cfg_tmpl: dict = load_cfg_template()
 
@@ -243,7 +256,7 @@ if __name__ == "__main__":
                 '-d', '--duration', '3m', '--warmup', '0', '-c', '1', '-m', 'write', '--non-interactive', '--cql-features', 'basic',
                 '--max-mutation-retries', '100', '--max-mutation-retries-backoff', '100ms',
                 '--replication-strategy', f"{{'class': 'SimpleStrategy', 'replication_factor': '{num_master_nodes}'}}",
-                '--table-options', "cdc = {'enabled': true}",
+                '--table-options', "cdc = {}".format(cdc_opts(mode)),
                 '--test-cluster={}'.format(master_nodes[0].ip()),
                 '--seed', str(gemini_seed),
                 '--verbose',
@@ -295,7 +308,8 @@ if __name__ == "__main__":
         log('Starting replicator')
         repl_proc = stack.enter_context(subprocess.Popen([
             'java', '-cp', replicator_path, 'com.scylladb.scylla.cdc.replicator.Main',
-            '-k', KS_NAME, '-t', TABLE_NAME, '-s', master_nodes[0].ip(), '-d', replica_nodes[0].ip(), '-cl', 'one'],
+            '-k', KS_NAME, '-t', TABLE_NAME, '-s', master_nodes[0].ip(), '-d', replica_nodes[0].ip(), '-cl', 'one',
+            '-m', mode],
             stdout=repl_log, stderr=subprocess.STDOUT))
 
         log('Letting stressor run for a while...')
@@ -314,21 +328,26 @@ if __name__ == "__main__":
         repl_proc.wait()
         log('Replicator return code:', repl_proc.returncode)
 
-        log('Comparing table contents using scylla-migrate...')
-        migrate_res = subprocess.run(
-            '{} check --master-address {} --replica-address {}'
-            ' --ignore-schema-difference {}.{}'.format(
-                migrate_path, master_nodes[0].ip(), replica_nodes[0].ip(),
-                KS_NAME, TABLE_NAME),
-            shell = True, stdout = migrate_log, stderr = subprocess.STDOUT)
-        log('Migrate return code:', migrate_res.returncode)
+        if mode != 'preimage':
+            log('Comparing table contents using scylla-migrate...')
+            migrate_res = subprocess.run(
+                '{} check --master-address {} --replica-address {}'
+                ' --ignore-schema-difference {} {}.{}'.format(
+                    migrate_path, master_nodes[0].ip(), replica_nodes[0].ip(),
+                    '--no-writetime' if mode == 'postimage' else '',
+                    KS_NAME, TABLE_NAME),
+                shell = True, stdout = migrate_log, stderr = subprocess.STDOUT)
+            log('Migrate return code:', migrate_res.returncode)
 
-    with open(run_path / 'migrate.log', 'r') as f:
-        ok = 'Consistency check OK.\n' in (line for line in f)
+    if mode != 'preimage':
+        with open(run_path / 'migrate.log', 'r') as f:
+            ok = 'Consistency check OK.\n' in (line for line in f)
 
-    if ok:
-        log('Consistency OK')
+        if ok:
+            log('Consistency OK')
+        else:
+            log('Inconsistency detected')
     else:
-        log('Inconsistency detected')
+        log('Preimage mode, not checking consistency.')
 
     log('tmux session name:', f'scylla-test-{run_id}')
