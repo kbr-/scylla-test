@@ -157,6 +157,7 @@ if __name__ == "__main__":
     parser.add_argument('--migrate-path', type=Path, required=True)
     parser.add_argument('--gemini', default=False, action='store_true')
     parser.add_argument('--gemini-seed', type=int)
+    parser.add_argument('--single', default=False, action='store_true')
     args = parser.parse_args()
 
     scylla_path = args.scylla_path.resolve()
@@ -176,6 +177,8 @@ if __name__ == "__main__":
     if use_gemini:
         log(f'gemini seed: {gemini_seed}')
 
+    num_master_nodes = 1 if args.single else 3
+
     cfg_tmpl: dict = load_cfg_template()
 
     run_id: str = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
@@ -192,7 +195,7 @@ if __name__ == "__main__":
     serv = libtmux.Server()
     tmux_sess = serv.new_session(session_name = f'scylla-test-{run_id}', start_directory = run_path)
 
-    master_envs = mk_dev_cluster_env(start = 10, num_nodes = 2)
+    master_envs = mk_dev_cluster_env(start = 10, num_nodes = 1 + num_master_nodes)
     master_nodes = [TmuxNode(run_path, e, tmux_sess, scylla_path) for e in master_envs]
 
     replica_envs = mk_dev_cluster_env(start = 20, num_nodes = 1)
@@ -210,7 +213,6 @@ if __name__ == "__main__":
     start_master.join()
     start_replica.join()
 
-    MASTER_RF = 1
     #Hardcoded in gemini:
     KS_NAME = 'ks1'
     TABLE_NAME = 'table1'
@@ -240,7 +242,7 @@ if __name__ == "__main__":
                 'gemini',
                 '-d', '--duration', '3m', '--warmup', '0', '-c', '1', '-m', 'write', '--non-interactive', '--cql-features', 'basic',
                 '--max-mutation-retries', '100', '--max-mutation-retries-backoff', '100ms',
-                '--replication-strategy', f"{{'class': 'SimpleStrategy', 'replication_factor': '{MASTER_RF}'}}",
+                '--replication-strategy', f"{{'class': 'SimpleStrategy', 'replication_factor': '{num_master_nodes}'}}",
                 '--table-options', "cdc = {'enabled': true}",
                 '--test-cluster={}'.format(master_nodes[0].ip()),
                 '--seed', str(gemini_seed),
@@ -248,9 +250,10 @@ if __name__ == "__main__":
                 '--level', 'info'
             ], stdout=stressor_log, stderr=subprocess.STDOUT))
         else:
+            prof_file = 'cdc_replication_profile_single.yaml' if args.single else 'cdc_replication_profile.yaml'
             stressor_proc = stack.enter_context(subprocess.Popen([
                 'cassandra-stress',
-                "user no-warmup profile=cdc_replication_profile.yaml ops(update=1) cl=QUORUM duration=3m",
+                "user no-warmup profile={} ops(update=1) cl=QUORUM duration=3m".format(prof_file),
                 "-port jmx=6868", "-mode cql3", "native", "-rate threads=1", "-log level=verbose interval=5", "-errors retries=999 ignore",
                 "-node {}".format(master_nodes[0].ip())],
                 stdout=stressor_log, stderr=subprocess.STDOUT))
