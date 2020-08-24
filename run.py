@@ -341,13 +341,14 @@ if __name__ == "__main__":
 
     if mode != 'preimage':
         with open(run_path / 'migrate.log', 'r') as f:
+            ok = 'Consistency check OK.\n' in (line for line in f)
+    else:
+        with open(run_path / 'replicator.log', 'r') as f:
             ok = not ('Inconsistency detected.\n' in (line for line in f))
 
-        if ok:
-            log('Consistency OK')
-        else:
-            log('Inconsistency detected')
+    if ok:
+        log('Consistency OK')
     else:
-        log('Preimage mode, not checking consistency.')
+        log('Inconsistency detected')
 
     log('tmux session name:', f'scylla-test-{run_id}')
