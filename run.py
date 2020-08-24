@@ -152,7 +152,7 @@ class TmuxNode:
 
 def cdc_opts(mode: str):
     if mode == 'preimage':
-        return "{'enabled': true, 'preimage': true}"
+        return "{'enabled': true, 'preimage': 'full'}"
     if mode == 'postimage':
         return "{'enabled': true, 'postimage': true}"
     return "{'enabled': true}"
