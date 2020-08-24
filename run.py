@@ -341,7 +341,7 @@ if __name__ == "__main__":
 
     if mode != 'preimage':
         with open(run_path / 'migrate.log', 'r') as f:
-            ok = 'Consistency check OK.\n' in (line for line in f)
+            ok = not ('Inconsistency detected.\n' in (line for line in f))
 
         if ok:
             log('Consistency OK')
