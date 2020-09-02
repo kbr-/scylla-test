@@ -328,23 +328,22 @@ if __name__ == "__main__":
         repl_proc.wait()
         log('Replicator return code:', repl_proc.returncode)
 
-        if mode != 'preimage':
-            log('Comparing table contents using scylla-migrate...')
-            migrate_res = subprocess.run(
-                '{} check --master-address {} --replica-address {}'
-                ' --ignore-schema-difference {} {}.{}'.format(
-                    migrate_path, master_nodes[0].ip(), replica_nodes[0].ip(),
-                    '--no-writetime' if mode == 'postimage' else '',
-                    KS_NAME, TABLE_NAME),
-                shell = True, stdout = migrate_log, stderr = subprocess.STDOUT)
-            log('Migrate return code:', migrate_res.returncode)
+        log('Comparing table contents using scylla-migrate...')
+        migrate_res = subprocess.run(
+            '{} check --master-address {} --replica-address {}'
+            ' --ignore-schema-difference {} {}.{}'.format(
+                migrate_path, master_nodes[0].ip(), replica_nodes[0].ip(),
+                '--no-writetime' if mode == 'postimage' else '',
+                KS_NAME, TABLE_NAME),
+            shell = True, stdout = migrate_log, stderr = subprocess.STDOUT)
+        log('Migrate return code:', migrate_res.returncode)
 
-    if mode != 'preimage':
-        with open(run_path / 'migrate.log', 'r') as f:
-            ok = 'Consistency check OK.\n' in (line for line in f)
-    else:
+    with open(run_path / 'migrate.log', 'r') as f:
+        ok = 'Consistency check OK.\n' in (line for line in f)
+
+    if mode == 'preimage':
         with open(run_path / 'replicator.log', 'r') as f:
-            ok = not ('Inconsistency detected.\n' in (line for line in f))
+            ok = ok and not ('Inconsistency detected.\n' in (line for line in f))
 
     if ok:
         log('Consistency OK')
