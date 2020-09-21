@@ -3,7 +3,7 @@ from contextlib import closing, ExitStack
 from dataclasses import replace
 from node_config import *
 from pathlib import Path
-from typing import Iterator, Tuple
+from typing import Iterator, Tuple, Optional
 import time
 import subprocess
 import select
@@ -16,6 +16,7 @@ import os
 import signal
 import argparse
 import random
+import queue
 
 from cassandra.cluster import Cluster
 
@@ -40,12 +41,15 @@ class LocalNodeEnv:
 
 def mk_run_script(opts: RunOpts, scylla_path: Path) -> str:
     return """#!/bin/bash
+set -m
 {path} \\
     --smp {smp} \\
     --max-io-requests {max_io_requests} \\
     --developer-mode={developer_mode} \\
     {skip_gossip_wait} \\
-    2>&1 | tee scyllalog
+    2>&1 | tee scyllalog &
+echo $! > scylla.pid
+fg
 """.format(
         path = scylla_path,
         smp = opts.smp,
@@ -135,6 +139,7 @@ class TmuxNode:
 
         self.window = sess.new_window(
             window_name = self.name, start_directory = self.path, attach = False)
+        self.running = False
 
     # Start node and wait for initialization.
     # Assumes that `start` wasn't called yet.
@@ -150,12 +155,56 @@ class TmuxNode:
         wait_for_init_path(log_file)
         log('Node', self.name, 'initialized.')
 
+        self.running = True
+        with open(self.path / 'scylla.pid') as pidfile:
+            self.pid = int(pidfile.read())
+
+    def pause(self) -> None:
+        os.kill(self.pid, signal.SIGSTOP)
+
+    def unpause(self) -> None:
+        os.kill(self.pid, signal.SIGCONT)
+
 def cdc_opts(mode: str):
     if mode == 'preimage':
         return "{'enabled': true, 'preimage': 'full'}"
     if mode == 'postimage':
         return "{'enabled': true, 'postimage': true}"
     return "{'enabled': true}"
+
+class PauseNemesis:
+    def __init__(self, n: TmuxNode):
+        self.n = n
+        self.q: Optional[queue.Queue] = None
+        self.t: Optional[Thread] = None
+
+    def _nemesis_thread(self):
+        while True:
+            time.sleep(5)
+            if not q.empty():
+                break
+            n.pause()
+            time.sleep(5)
+            if not q.empty():
+                break
+            n.unpause()
+        n.unpause()
+
+    def start(self):
+        if self.t:
+            return
+
+        self.q = queue.Queue()
+        self.t = Thread(target=_nemesis_thread, args=[self])
+
+    def stop(self):
+        if not self.t:
+            return
+
+        self.q.put(None)
+        self.t.join()
+        self.q = None
+        self.t = None
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -166,20 +215,29 @@ if __name__ == "__main__":
     parser.add_argument('--gemini-seed', type=int)
     parser.add_argument('--single', default=False, action='store_true')
     parser.add_argument('--mode', default='delta', choices=['delta','preimage','postimage'])
+    parser.add_argument('--no-bootstrap-node', default=False, action='store_true')
+    parser.add_argument('--duration', type=int, default=60)
+    parser.add_argument('--with-pauses', default=False, action='store_true')
     args = parser.parse_args()
 
     scylla_path = args.scylla_path.resolve()
     replicator_path = args.replicator_path.resolve()
     migrate_path = args.migrate_path.resolve()
     use_gemini = args.gemini
-    log('Scylla: {}\nReplicator: {}\nMigrate: {}\nuse_gemini: {}'.format(
-        scylla_path, replicator_path, migrate_path, use_gemini))
+    bootstrap_node = not args.no_bootstrap_node
+    duration = args.duration
+    with_pauses = args.with_pauses
+    log('Scylla: {}\nReplicator: {}\nMigrate: {}\nuse_gemini: {}\nbootstrap_node: {}\nduration: {}s\npauses: {}'.format(
+        scylla_path, replicator_path, migrate_path, use_gemini, bootstrap_node, duration, with_pauses))
 
     gemini_seed = args.gemini_seed
     if gemini_seed is None:
         gemini_seed = random.randint(1, 1000)
     if gemini_seed < 1:
         print('Wrong gemini seed. Use a positive number.')
+        exit(1)
+    if duration < 1:
+        print('Wrong duration. Use a positive number.')
         exit(1)
 
     if use_gemini:
@@ -208,8 +266,13 @@ if __name__ == "__main__":
     serv = libtmux.Server()
     tmux_sess = serv.new_session(session_name = f'scylla-test-{run_id}', start_directory = run_path)
 
-    master_envs = mk_dev_cluster_env(start = 10, num_nodes = 1 + num_master_nodes)
+    master_envs = mk_dev_cluster_env(start = 10, num_nodes = int(bootstrap_node) + num_master_nodes)
     master_nodes = [TmuxNode(run_path, e, tmux_sess, scylla_path) for e in master_envs]
+
+    new_node = None
+    if bootstrap_node:
+        new_node = master_nodes[-1]
+        master_nodes = master_nodes[:-1]
 
     replica_envs = mk_dev_cluster_env(start = 20, num_nodes = 1)
     replica_nodes = [TmuxNode(run_path, e, tmux_sess, scylla_path) for e in replica_envs]
@@ -219,7 +282,7 @@ if __name__ == "__main__":
     def start_cluster(nodes: List[TmuxNode]):
         for n in nodes:
             n.start()
-    start_master = Thread(target=start_cluster, args=[master_nodes[:-1]])
+    start_master = Thread(target=start_cluster, args=[master_nodes])
     start_replica = Thread(target=start_cluster, args=[replica_nodes])
     start_master.start()
     start_replica.start()
@@ -230,7 +293,7 @@ if __name__ == "__main__":
     KS_NAME = 'ks1'
     TABLE_NAME = 'table1'
     
-    cm = Cluster([n.ip() for n in master_nodes[:-1]])
+    cm = Cluster([n.ip() for n in master_nodes])
     cr = Cluster([n.ip() for n in replica_nodes])
 
     w = tmux_sess.windows[0]
@@ -253,20 +316,24 @@ if __name__ == "__main__":
         if use_gemini:
             stressor_proc = stack.enter_context(subprocess.Popen([
                 'gemini',
-                '-d', '--duration', '3m', '--warmup', '0', '-c', '1', '-m', 'write', '--non-interactive', '--cql-features', 'basic',
+                '-d', '--duration', '{}s'.format(duration), '--warmup', '0', '-c', '5', '-m', 'write',
+                '--non-interactive',
+                '--cql-features', 'basic',
                 '--max-mutation-retries', '100', '--max-mutation-retries-backoff', '100ms',
                 '--replication-strategy', f"{{'class': 'SimpleStrategy', 'replication_factor': '{num_master_nodes}'}}",
                 '--table-options', "cdc = {}".format(cdc_opts(mode)),
                 '--test-cluster={}'.format(master_nodes[0].ip()),
                 '--seed', str(gemini_seed),
                 '--verbose',
-                '--level', 'info'
+                '--level', 'info',
+                '--use-server-timestamps',
+                '--test-host-selection-policy', 'token-aware'
             ], stdout=stressor_log, stderr=subprocess.STDOUT))
         else:
             prof_file = 'cdc_replication_profile_single.yaml' if args.single else 'cdc_replication_profile.yaml'
             stressor_proc = stack.enter_context(subprocess.Popen([
                 'cassandra-stress',
-                "user no-warmup profile={} ops(update=1) cl=QUORUM duration=3m".format(prof_file),
+                "user no-warmup profile={} ops(update=1) cl=QUORUM duration={}m".format(prof_file, duration),
                 "-port jmx=6868", "-mode cql3", "native", "-rate threads=1", "-log level=verbose interval=5", "-errors retries=999 ignore",
                 "-node {}".format(master_nodes[0].ip())],
                 stdout=stressor_log, stderr=subprocess.STDOUT))
@@ -312,15 +379,26 @@ if __name__ == "__main__":
             '-m', mode],
             stdout=repl_log, stderr=subprocess.STDOUT))
 
+        nem = None
+        if with_pauses:
+            log('Starting pause nemesis')
+            nem = PauseNemesis(master_nodes[0])
+            nem.start()
+
         log('Letting stressor run for a while...')
         time.sleep(5)
 
-        log('Bootstrapping new node')
-        master_nodes[-1].start()
+        if new_node:
+            log('Bootstrapping new node')
+            new_node.start()
 
         log('Waiting for stressor to finish...')
         stressor_proc.wait()
         log('Gemini return code:', stressor_proc.returncode)
+
+        if nem:
+            log('Stopping pause nemesis')
+            nem.stop()
 
         log('Waiting for replicator to finish...')
         time.sleep(30)
