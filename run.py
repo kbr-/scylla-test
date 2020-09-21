@@ -74,7 +74,7 @@ def mk_dev_cluster_env(start: int, num_nodes: int) -> List[LocalNodeEnv]:
     return envs
 
 def log(*args):
-    print(datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), *args)
+    print(datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), *args, flush=True)
 
 # Returns an iterator to the file's lines.
 # If not able to retrieve a next line for 1 second, yields ''.
@@ -178,29 +178,34 @@ class PauseNemesis:
         self.q: Optional[queue.Queue] = None
         self.t: Optional[Thread] = None
 
-    def _nemesis_thread(self):
+    def _nemesis_thread(self, q: queue.Queue) -> None:
         while True:
             time.sleep(5)
             if not q.empty():
                 break
-            n.pause()
-            time.sleep(5)
+            log('Nemesis: pausing {}'.format(self.n.ip()))
+            self.n.pause()
+            time.sleep(3 + random.randrange(0,2))
             if not q.empty():
                 break
-            n.unpause()
-        n.unpause()
+            log('Nemesis: unpausing {}'.format(self.n.ip()))
+            self.n.unpause()
+        log('Nemesis: asked to finish, unpausing {}'.format(self.n.ip()))
+        self.n.unpause()
 
-    def start(self):
+    def start(self) -> None:
         if self.t:
             return
 
         self.q = queue.Queue()
-        self.t = Thread(target=_nemesis_thread, args=[self])
+        self.t = Thread(target=PauseNemesis._nemesis_thread, args=[self, self.q])
+        self.t.start()
 
-    def stop(self):
+    def stop(self) -> None:
         if not self.t:
             return
 
+        assert self.q
         self.q.put(None)
         self.t.join()
         self.q = None
@@ -273,6 +278,10 @@ if __name__ == "__main__":
     if bootstrap_node:
         new_node = master_nodes[-1]
         master_nodes = master_nodes[:-1]
+
+    nemeses = None
+    if with_pauses:
+        nemeses = [PauseNemesis(n) for n in master_nodes]
 
     replica_envs = mk_dev_cluster_env(start = 20, num_nodes = 1)
     replica_nodes = [TmuxNode(run_path, e, tmux_sess, scylla_path) for e in replica_envs]
@@ -379,11 +388,10 @@ if __name__ == "__main__":
             '-m', mode],
             stdout=repl_log, stderr=subprocess.STDOUT))
 
-        nem = None
-        if with_pauses:
-            log('Starting pause nemesis')
-            nem = PauseNemesis(master_nodes[0])
-            nem.start()
+        if nemeses:
+            log('Starting pause nemeses')
+            for n in nemeses:
+                n.start()
 
         log('Letting stressor run for a while...')
         time.sleep(5)
@@ -396,15 +404,16 @@ if __name__ == "__main__":
         stressor_proc.wait()
         log('Gemini return code:', stressor_proc.returncode)
 
-        if nem:
-            log('Stopping pause nemesis')
-            nem.stop()
-
         log('Waiting for replicator to finish...')
         time.sleep(30)
         repl_proc.send_signal(signal.SIGINT)
         repl_proc.wait()
         log('Replicator return code:', repl_proc.returncode)
+
+        if nemeses:
+            log('Starting pause nemeses')
+            for n in nemeses:
+                n.stop()
 
         log('Comparing table contents using scylla-migrate...')
         migrate_res = subprocess.run(
