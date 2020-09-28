@@ -218,6 +218,7 @@ if __name__ == "__main__":
     parser.add_argument('--migrate-path', type=Path, required=True)
     parser.add_argument('--gemini', default=False, action='store_true')
     parser.add_argument('--gemini-seed', type=int)
+    parser.add_argument('--gemini-concurrency', type=int, default=5)
     parser.add_argument('--single', default=False, action='store_true')
     parser.add_argument('--mode', default='delta', choices=['delta','preimage','postimage'])
     parser.add_argument('--no-bootstrap-node', default=False, action='store_true')
@@ -232,6 +233,7 @@ if __name__ == "__main__":
     bootstrap_node = not args.no_bootstrap_node
     duration = args.duration
     with_pauses = args.with_pauses
+    gemini_concurrency = args.gemini_concurrency
     log('Scylla: {}\nReplicator: {}\nMigrate: {}\nuse_gemini: {}\nbootstrap_node: {}\nduration: {}s\npauses: {}'.format(
         scylla_path, replicator_path, migrate_path, use_gemini, bootstrap_node, duration, with_pauses))
 
@@ -244,9 +246,12 @@ if __name__ == "__main__":
     if duration < 1:
         print('Wrong duration. Use a positive number.')
         exit(1)
+    if gemini_concurrency < 1:
+        print('Wrong gemini_concurrency. Use a positive number.')
+        exit(1)
 
     if use_gemini:
-        log(f'gemini seed: {gemini_seed}')
+        log(f'gemini seed: {gemini_seed}\ngemini concurrency: {gemini_concurrency}')
 
     num_master_nodes = 1 if args.single else 3
     mode = args.mode
@@ -325,7 +330,9 @@ if __name__ == "__main__":
         if use_gemini:
             stressor_proc = stack.enter_context(subprocess.Popen([
                 'gemini',
-                '-d', '--duration', '{}s'.format(duration), '--warmup', '0', '-c', '5', '-m', 'write',
+                '-d', '--duration', '{}s'.format(duration), '--warmup', '0',
+                '-c', '{}'.format(gemini_concurrency),
+                '-m', 'write',
                 '--non-interactive',
                 '--cql-features', 'basic',
                 '--max-mutation-retries', '100', '--max-mutation-retries-backoff', '100ms',
