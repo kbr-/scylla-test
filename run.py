@@ -411,16 +411,18 @@ if __name__ == "__main__":
         stressor_proc.wait()
         log('Gemini return code:', stressor_proc.returncode)
 
-        log('Waiting for replicator to finish...')
+        log('Letting replicator run for a while (30s)...')
         time.sleep(30)
+
+        if nemeses:
+            log('Stopping pause nemeses')
+            for n in nemeses:
+                n.stop()
+
+        log('Waiting for replicator to finish...')
         repl_proc.send_signal(signal.SIGINT)
         repl_proc.wait()
         log('Replicator return code:', repl_proc.returncode)
-
-        if nemeses:
-            log('Starting pause nemeses')
-            for n in nemeses:
-                n.stop()
 
         log('Comparing table contents using scylla-migrate...')
         migrate_res = subprocess.run(
