@@ -404,8 +404,18 @@ if __name__ == "__main__":
         time.sleep(5)
 
         if new_node:
+            if nemeses:
+                log('Stopping pause nemeses before bootstrapping a node')
+                for n in nemeses:
+                    n.stop()
+
             log('Bootstrapping new node')
             new_node.start()
+
+            if nemeses:
+                log('Restarting pause nemeses after bootstrapping a node')
+                for n in nemeses:
+                    n.start()
 
         log('Waiting for stressor to finish...')
         stressor_proc.wait()
