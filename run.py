@@ -401,7 +401,7 @@ if __name__ == "__main__":
                 n.start()
 
         log('Letting stressor run for a while...')
-        time.sleep(5)
+        time.sleep(15)
 
         if new_node:
             if nemeses:
