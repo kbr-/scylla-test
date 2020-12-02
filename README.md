@@ -13,9 +13,9 @@ the replicator will be available at
 ./scylla-cdc-java/scylla-cdc-replicator/target/scylla-cdc-replicator-0.0.1-SNAPSHOT-jar-with-dependencies.jar
 ```
 
-Clone and build scylla-migrate with the --ignore-schema--difference extension:
+Clone and build scylla-migrate:
 ```
-git clone https://github.com/kbr-/scylla-migrate.git --branch ignore-schema
+git clone https://github.com/scylladb/scylla-migrate.git
 (cd scylla-migrate && mvn package)
 ```
 the tool will be available at
