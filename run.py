@@ -364,7 +364,7 @@ if __name__ == "__main__":
             prof_file = 'cdc_replication_profile_single.yaml' if args.single else 'cdc_replication_profile.yaml'
             stressor_proc = stack.enter_context(subprocess.Popen([
                 'cassandra-stress',
-                "user no-warmup profile={} ops(update=1) cl=QUORUM duration={}m".format(prof_file, duration),
+                "user no-warmup profile={} ops(update=1) cl=QUORUM duration={}s".format(prof_file, duration),
                 "-port jmx=6868", "-mode cql3", "native", "-rate threads=1", "-log level=verbose interval=5", "-errors retries=999 ignore",
                 "-node {}".format(master_nodes[0].ip())],
                 stdout=stressor_log, stderr=subprocess.STDOUT))
