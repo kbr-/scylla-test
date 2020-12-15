@@ -1,0 +1,21 @@
+CREATE TABLE ks1.range_deletes (pk text, ck1 int, ck2 int, v int, PRIMARY KEY (pk, ck1, ck2)) WITH cdc = {'enabled': true, 'preimage': true, 'postimage': true};
+
+INSERT INTO ks1.range_deletes (pk, ck1, ck2, v) VALUES ('range_deletes', 1, 1, 0);
+INSERT INTO ks1.range_deletes (pk, ck1, ck2, v) VALUES ('range_deletes', 1, 2, 0);
+INSERT INTO ks1.range_deletes (pk, ck1, ck2, v) VALUES ('range_deletes', 1, 3, 0);
+INSERT INTO ks1.range_deletes (pk, ck1, ck2, v) VALUES ('range_deletes', 1, 4, 0);
+INSERT INTO ks1.range_deletes (pk, ck1, ck2, v) VALUES ('range_deletes', 2, 1, 0);
+INSERT INTO ks1.range_deletes (pk, ck1, ck2, v) VALUES ('range_deletes', 2, 2, 0);
+INSERT INTO ks1.range_deletes (pk, ck1, ck2, v) VALUES ('range_deletes', 2, 3, 0);
+INSERT INTO ks1.range_deletes (pk, ck1, ck2, v) VALUES ('range_deletes', 2, 4, 0);
+INSERT INTO ks1.range_deletes (pk, ck1, ck2, v) VALUES ('range_deletes', 3, 1, 0);
+INSERT INTO ks1.range_deletes (pk, ck1, ck2, v) VALUES ('range_deletes', 3, 2, 0);
+INSERT INTO ks1.range_deletes (pk, ck1, ck2, v) VALUES ('range_deletes', 3, 3, 0);
+INSERT INTO ks1.range_deletes (pk, ck1, ck2, v) VALUES ('range_deletes', 3, 4, 0);
+INSERT INTO ks1.range_deletes (pk, ck1, ck2, v) VALUES ('range_deletes', 4, 1, 0);
+INSERT INTO ks1.range_deletes (pk, ck1, ck2, v) VALUES ('range_deletes', 4, 2, 0);
+INSERT INTO ks1.range_deletes (pk, ck1, ck2, v) VALUES ('range_deletes', 4, 3, 0);
+INSERT INTO ks1.range_deletes (pk, ck1, ck2, v) VALUES ('range_deletes', 4, 4, 0);
+DELETE FROM ks1.range_deletes WHERE pk = 'range_deletes' AND ck1 > 3;
+DELETE FROM ks1.range_deletes WHERE pk = 'range_deletes' AND ck1 <= 1;
+DELETE FROM ks1.range_deletes WHERE pk = 'range_deletes' AND ck1 = 2 AND ck2 > 1 AND ck2 < 4;
