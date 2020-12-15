@@ -17,6 +17,7 @@ import signal
 import argparse
 import random
 import queue
+import itertools
 
 from cassandra.cluster import Cluster
 
@@ -219,6 +220,8 @@ if __name__ == "__main__":
     parser.add_argument('--gemini', default=False, action='store_true')
     parser.add_argument('--gemini-seed', type=int)
     parser.add_argument('--gemini-concurrency', type=int, default=5)
+    parser.add_argument('--cql', default=False, action='store_true')
+    parser.add_argument('--cqlsh-path', type=Path)
     parser.add_argument('--single', default=False, action='store_true')
     parser.add_argument('--mode', default='delta', choices=['delta','preimage','postimage'])
     parser.add_argument('--no-bootstrap-node', default=False, action='store_true')
@@ -230,12 +233,15 @@ if __name__ == "__main__":
     replicator_path = args.replicator_path.resolve()
     migrate_path = args.migrate_path.resolve()
     use_gemini = args.gemini
+    use_cql = args.cql
+    if use_cql:
+        cqlsh_path = args.cqlsh_path.resolve()
     bootstrap_node = not args.no_bootstrap_node
     duration = args.duration
     with_pauses = args.with_pauses
     gemini_concurrency = args.gemini_concurrency
-    log('Scylla: {}\nReplicator: {}\nMigrate: {}\nuse_gemini: {}\nbootstrap_node: {}\nduration: {}s\npauses: {}'.format(
-        scylla_path, replicator_path, migrate_path, use_gemini, bootstrap_node, duration, with_pauses))
+    log('Scylla: {}\nReplicator: {}\nMigrate: {}\nuse_gemini: {}\nuse_cql: {}\nbootstrap_node: {}\nduration: {}s\npauses: {}'.format(
+        scylla_path, replicator_path, migrate_path, use_gemini, use_cql, bootstrap_node, duration, with_pauses))
 
     gemini_seed = args.gemini_seed
     if gemini_seed is None:
@@ -256,7 +262,7 @@ if __name__ == "__main__":
     num_master_nodes = 1 if args.single else 3
     mode = args.mode
 
-    if mode != 'delta' and not use_gemini:
+    if mode != 'delta' and not use_gemini and not use_cql:
         print('preimage/postimage supported with gemini only')
         exit(1)
 
@@ -305,7 +311,10 @@ if __name__ == "__main__":
 
     #Hardcoded in gemini:
     KS_NAME = 'ks1'
-    TABLE_NAME = 'table1'
+    TABLE_NAMES = ['table1']
+
+    if use_cql:
+        TABLE_NAMES = [os.path.splitext(f)[0] for f in os.listdir('./cql/') if os.path.isfile(os.path.join('./cql/', f))]
     
     cm = Cluster([n.ip() for n in master_nodes])
     cr = Cluster([n.ip() for n in replica_nodes])
@@ -344,6 +353,12 @@ if __name__ == "__main__":
                 '--level', 'info',
                 '--use-server-timestamps',
                 '--test-host-selection-policy', 'token-aware'
+            ], stdout=stressor_log, stderr=subprocess.STDOUT))
+        elif use_cql:
+            stressor_proc = stack.enter_context(subprocess.Popen([
+                './run_cqlsh.sh',
+                cqlsh_path,
+                master_nodes[0].ip()
             ], stdout=stressor_log, stderr=subprocess.STDOUT))
         else:
             prof_file = 'cdc_replication_profile_single.yaml' if args.single else 'cdc_replication_profile.yaml'
@@ -390,8 +405,8 @@ if __name__ == "__main__":
 
         log('Starting replicator')
         repl_proc = stack.enter_context(subprocess.Popen([
-            'java', '-cp', replicator_path, 'com.scylladb.scylla.cdc.replicator.Main',
-            '-k', KS_NAME, '-t', TABLE_NAME, '-s', master_nodes[0].ip(), '-d', replica_nodes[0].ip(), '-cl', 'one',
+            'java', '-cp', replicator_path, 'com.scylladb.cdc.replicator.Main',
+            '-k', KS_NAME, '-t', ','.join(TABLE_NAMES), '-s', master_nodes[0].ip(), '-d', replica_nodes[0].ip(), '-cl', 'one',
             '-m', mode],
             stdout=repl_log, stderr=subprocess.STDOUT))
 
@@ -437,10 +452,10 @@ if __name__ == "__main__":
         log('Comparing table contents using scylla-migrate...')
         migrate_res = subprocess.run(
             '{} check --master-address {} --replica-address {}'
-            ' --ignore-schema-difference {} {}.{}'.format(
+            ' --ignore-schema-difference {} {}'.format(
                 migrate_path, master_nodes[0].ip(), replica_nodes[0].ip(),
                 '--no-writetime' if mode == 'postimage' else '',
-                KS_NAME, TABLE_NAME),
+                ' '.join(map(lambda e: e[0] + '.' + e[1], zip(itertools.repeat(KS_NAME), TABLE_NAMES)))),
             shell = True, stdout = migrate_log, stderr = subprocess.STDOUT)
         log('Migrate return code:', migrate_res.returncode)
 
