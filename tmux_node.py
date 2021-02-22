@@ -19,6 +19,7 @@ class SeastarOpts:
 class ScyllaOpts:
     developer_mode: bool = False
     skip_gossip_wait: bool = False
+    stall_notify_ms: Optional[int] = None
 
 @dataclass(frozen=True)
 class RunOpts(SeastarOpts, ScyllaOpts):
@@ -38,6 +39,7 @@ set -m
     --developer-mode={developer_mode} \\
     {overprovisioned} \\
     {skip_gossip_wait} \\
+    {stall_notify_ms} \\
     2>&1 | tee scyllalog &
 echo $! > scylla.pid
 fg
@@ -47,17 +49,20 @@ fg
         max_io_requests = opts.max_io_requests,
         developer_mode = opts.developer_mode,
         skip_gossip_wait = '--skip-wait-for-gossip-to-settle 0' if opts.skip_gossip_wait else '',
-        overprovisioned = '--overprovisioned' if opts.overprovisioned else '')
+        overprovisioned = '--overprovisioned' if opts.overprovisioned else '',
+        stall_notify_ms = '--blocked-reactor-notify-ms {}'.format(opts.stall_notify_ms) if opts.stall_notify_ms else '')
 
 # IPs start from 127.0.0.{start}
-def mk_dev_cluster_env(start: int, num_nodes: int, smp: int = 3, overprovisioned: bool = False) -> List[LocalNodeEnv]:
+def mk_dev_cluster_env(start: int, num_nodes: int, smp: int = 3, overprovisioned: bool = False,
+        stall_notify_ms: Optional[int] = None) -> List[LocalNodeEnv]:
     assert start + num_nodes <= 256
     assert num_nodes > 0
 
     ips = [f'127.0.0.{i}' for i in range(start, num_nodes + start)]
     envs = [LocalNodeEnv(
                 cfg = NodeConfig(ip_addr = i, seed_ip_addr = ips[0]),
-                opts = RunOpts(developer_mode = True, smp = smp, overprovisioned = overprovisioned))
+                opts = RunOpts(developer_mode = True, smp = smp, overprovisioned = overprovisioned,
+                    stall_notify_ms = stall_notify_ms))
             for i in ips]
 
     # Optimization to start first node faster

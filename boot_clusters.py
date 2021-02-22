@@ -18,17 +18,21 @@ def current_session(serv: libtmux.Server) -> Optional[libtmux.Session]:
                     return sess
     return None
 
-def boot_cluster(
+def create_cluster(
         cfg_tmpl: dict, run_path: Path, sess: libtmux.Session, scylla_path: Path,
-        ip_start: int, num_nodes: int, smp: int, overprovisioned: bool) -> Tuple[List[TmuxNode], Thread]:
-    envs = mk_dev_cluster_env(ip_start, num_nodes, smp, overprovisioned)
+        ip_start: int, num_nodes: int, smp: int, overprovisioned: bool,
+        stall_notify_ms: Optional[int]) -> List[TmuxNode]:
+    envs = mk_dev_cluster_env(ip_start, num_nodes, smp, overprovisioned, stall_notify_ms)
     nodes = [TmuxNode(cfg_tmpl, run_path, e, sess, scylla_path) for e in envs]
-    def start_cluster():
+    return nodes
+
+def boot(nodes: List[TmuxNode]) -> Thread:
+    def start():
         for n in nodes:
             n.start()
-    start_thread = Thread(target=start_cluster)
+    start_thread = Thread(target=start)
     start_thread.start()
-    return nodes, start_thread
+    return start_thread
 
 if __name__ == "__main__":
     s = libtmux.Server()
@@ -45,6 +49,8 @@ if __name__ == "__main__":
     parser.add_argument('--num-nodes', nargs='+', type=int)
     parser.add_argument('--num-shards', type=int)
     parser.add_argument('--overprovisioned', action='store_true')
+    parser.add_argument('--stall-notify-ms', type=int)
+    parser.add_argument('--no-boot', action='store_true')
     args = parser.parse_args()
 
     scylla_path = args.scylla_path.resolve()
@@ -52,22 +58,32 @@ if __name__ == "__main__":
     num_nodes = args.num_nodes
     num_shards = args.num_shards if args.num_shards else 3
     overprovisioned = bool(args.overprovisioned)
+    stall_notify_ms = args.stall_notify_ms
+    start_clusters = not args.no_boot
     if any(n <= 0 for n in num_nodes):
         print('Cluster sizes must be positive')
         exit(1)
     if num_shards <= 0:
         print('Number of shards must be positive')
         exit(1)
+    if stall_notify_ms and stall_notify_ms <= 0:
+        print('stall_notify_ms must be positive')
+        exit(1)
 
-    log('Scylla: {}\nRun path: {}\nNum nodes: {}\nNum shards: {}\nOverprovisioned: {}'.format(
-        scylla_path, run_path, num_nodes, num_shards, overprovisioned))
+    log('Scylla: {}\nRun path: {}\nNum nodes: {}\nNum shards: {}\nOverprovisioned: {}{}\nStart clusters: {}'.format(
+        scylla_path, run_path, num_nodes, num_shards, overprovisioned,
+        '\nstall_notify_ms: {}'.format(stall_notify_ms) if stall_notify_ms else '',
+        start_clusters))
 
     cfg_tmpl: dict = load_cfg_template()
 
     ip_starts = itertools.accumulate([1] + num_nodes, operator.add)
-    log('Booting {} clusters...'.format(len(num_nodes)))
-    ts = [boot_cluster(cfg_tmpl, run_path, sess, scylla_path, ip_start, num, num_shards, overprovisioned)[1]
+    log('Creating {} clusters...'.format(len(num_nodes)))
+    cs = [create_cluster(cfg_tmpl, run_path, sess, scylla_path, ip_start, num,
+                num_shards, overprovisioned, stall_notify_ms)
             for ip_start, num in zip(ip_starts, num_nodes)]
 
-    log('Waiting for clusters to boot...')
-    for t in ts: t.join()
+    if start_clusters:
+        ts = [boot(c) for c in cs]
+        log('Waiting for clusters to boot...')
+        for t in ts: t.join()
