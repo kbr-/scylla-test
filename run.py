@@ -139,7 +139,7 @@ if __name__ == "__main__":
     serv = libtmux.Server()
     tmux_sess = serv.new_session(session_name = f'scylla-test-{run_id}', start_directory = run_path)
 
-    master_envs = mk_dev_cluster_env(start = 10, num_nodes = int(bootstrap_node) + num_master_nodes)
+    master_envs = mk_dev_cluster_env(start = 10, num_nodes = int(bootstrap_node) + num_master_nodes, overprovisioned = True)
     master_nodes = [TmuxNode(cfg_tmpl, run_path, e, tmux_sess, scylla_path) for e in master_envs]
 
     new_node = None
@@ -151,7 +151,7 @@ if __name__ == "__main__":
     if with_pauses:
         nemeses = [PauseNemesis(n) for n in master_nodes]
 
-    replica_envs = mk_dev_cluster_env(start = 20, num_nodes = 1)
+    replica_envs = mk_dev_cluster_env(start = 20, num_nodes = 1, overprovisioned = True)
     replica_nodes = [TmuxNode(cfg_tmpl, run_path, e, tmux_sess, scylla_path) for e in replica_envs]
 
     log('tmux session name:', f'scylla-test-{run_id}')
@@ -293,8 +293,8 @@ if __name__ == "__main__":
         stressor_proc.wait()
         log('Gemini return code:', stressor_proc.returncode)
 
-        log('Letting replicator run for a while (30s)...')
-        time.sleep(30)
+        log('Letting replicator run for a while (60s)...')
+        time.sleep(60)
 
         if nemeses:
             log('Stopping pause nemeses')
