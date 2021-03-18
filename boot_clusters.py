@@ -20,8 +20,8 @@ def current_session(serv: libtmux.Server) -> Optional[libtmux.Session]:
 
 def create_cluster(
         cfg_tmpl: dict, run_path: Path, sess: libtmux.Session, scylla_path: Path,
-        ip_start: int, num_nodes: int, opts: RunOpts) -> List[TmuxNode]:
-    envs = mk_cluster_env(ip_start, num_nodes, opts)
+        ip_start: int, num_nodes: int, opts: RunOpts, ring_delay_ms: int) -> List[TmuxNode]:
+    envs = mk_cluster_env(ip_start, num_nodes, opts, ring_delay_ms)
     nodes = [TmuxNode(cfg_tmpl, run_path, e, sess, scylla_path) for e in envs]
     return nodes
 
@@ -50,6 +50,7 @@ if __name__ == "__main__":
     parser.add_argument('--overprovisioned', action='store_true')
     parser.add_argument('--stall-notify-ms', type=int)
     parser.add_argument('--no-boot', action='store_true')
+    parser.add_argument('--ring_delay_ms', type=int, default=3000)
     args = parser.parse_args()
 
     scylla_path = args.scylla_path.resolve()
@@ -59,6 +60,7 @@ if __name__ == "__main__":
     overprovisioned = bool(args.overprovisioned)
     stall_notify_ms = args.stall_notify_ms
     start_clusters = not args.no_boot
+    ring_delay_ms = args.ring_delay_ms
     if any(n <= 0 for n in num_nodes):
         print('Cluster sizes must be positive')
         exit(1)
@@ -67,6 +69,9 @@ if __name__ == "__main__":
         exit(1)
     if stall_notify_ms and stall_notify_ms <= 0:
         print('stall_notify_ms must be positive')
+        exit(1)
+    if ring_delay_ms < 1:
+        print('ring_delay_ms must be positive')
         exit(1)
 
     log('Scylla: {}\nRun path: {}\nNum nodes: {}\nNum shards: {}\nOverprovisioned: {}{}\nStart clusters: {}'.format(
@@ -83,7 +88,7 @@ if __name__ == "__main__":
 
     ip_starts = itertools.accumulate([1] + num_nodes, operator.add)
     log('Creating {} clusters...'.format(len(num_nodes)))
-    cs = [create_cluster(cfg_tmpl, run_path, sess, scylla_path, ip_start, num, opts)
+    cs = [create_cluster(cfg_tmpl, run_path, sess, scylla_path, ip_start, num, opts, ring_delay_ms)
             for ip_start, num in zip(ip_starts, num_nodes)]
 
     if start_clusters:

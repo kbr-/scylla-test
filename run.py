@@ -84,6 +84,7 @@ if __name__ == "__main__":
     parser.add_argument('--no-bootstrap-node', default=False, action='store_true')
     parser.add_argument('--duration', type=int, default=60)
     parser.add_argument('--with-pauses', default=False, action='store_true')
+    parser.add_argument('--ring_delay_ms', type=int, default=3000)
     args = parser.parse_args()
 
     scylla_path = args.scylla_path.resolve()
@@ -97,8 +98,9 @@ if __name__ == "__main__":
     duration = args.duration
     with_pauses = args.with_pauses
     gemini_concurrency = args.gemini_concurrency
-    log('Scylla: {}\nReplicator: {}\nMigrate: {}\nuse_gemini: {}\nuse_cql: {}\nbootstrap_node: {}\nduration: {}s\npauses: {}'.format(
-        scylla_path, replicator_path, migrate_path, use_gemini, use_cql, bootstrap_node, duration, with_pauses))
+    ring_delay_ms = args.ring_delay_ms
+    log('Scylla: {}\nReplicator: {}\nMigrate: {}\nuse_gemini: {}\nuse_cql: {}\nbootstrap_node: {}\nduration: {}s\npauses: {}\nring_delay_ms: {}'.format(
+        scylla_path, replicator_path, migrate_path, use_gemini, use_cql, bootstrap_node, duration, with_pauses, ring_delay_ms))
 
     gemini_seed = args.gemini_seed
     if gemini_seed is None:
@@ -111,6 +113,9 @@ if __name__ == "__main__":
         exit(1)
     if gemini_concurrency < 1:
         print('Wrong gemini_concurrency. Use a positive number.')
+        exit(1)
+    if ring_delay_ms < 1:
+        print('ring_delay_ms must be positive')
         exit(1)
 
     if use_gemini:
@@ -140,7 +145,7 @@ if __name__ == "__main__":
     tmux_sess = serv.new_session(session_name = f'scylla-test-{run_id}', start_directory = run_path)
 
     master_envs = mk_cluster_env(start = 10, num_nodes = int(bootstrap_node) + num_master_nodes,
-            opts = replace(RunOpts(), overprovisioned = True))
+            opts = replace(RunOpts(), overprovisioned = True), ring_delay_ms = ring_delay_ms)
     master_nodes = [TmuxNode(cfg_tmpl, run_path, e, tmux_sess, scylla_path) for e in master_envs]
 
     new_node = None
@@ -153,7 +158,7 @@ if __name__ == "__main__":
         nemeses = [PauseNemesis(n) for n in master_nodes]
 
     replica_envs = mk_cluster_env(start = 20, num_nodes = 1,
-            opts = replace(RunOpts(), overprovisioned = True))
+            opts = replace(RunOpts(), overprovisioned = True), ring_delay_ms = ring_delay_ms)
     replica_nodes = [TmuxNode(cfg_tmpl, run_path, e, tmux_sess, scylla_path) for e in replica_envs]
 
     log('tmux session name:', f'scylla-test-{run_id}')

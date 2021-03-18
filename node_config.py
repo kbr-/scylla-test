@@ -6,7 +6,7 @@ import yaml
 class NodeConfig:
     ip_addr: str
     seed_ip_addr: str
-    ring_delay_sec: int = 3
+    ring_delay_ms: int = 3000
 
 def load_cfg_template() -> dict:
     with open('resources/scylla.yaml') as f:
@@ -24,7 +24,7 @@ def mk_node_cfg(tmpl: dict, cfg: NodeConfig) -> dict:
                     'seeds': '{}'.format(','.join([cfg.seed_ip_addr]))
                     }]
                 }],
-            'ring_delay_ms': cfg.ring_delay_sec * 1000
+            'ring_delay_ms': cfg.ring_delay_ms
         })
 
 #print(yaml.dump(mk_node_cfg(NodeConfig(seed_ip_addr='127.0.0.1', ip_addr='127.0.0.1'))))

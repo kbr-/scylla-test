@@ -53,13 +53,13 @@ fg
         stall_notify_ms = '--blocked-reactor-notify-ms {}'.format(opts.stall_notify_ms) if opts.stall_notify_ms else '')
 
 # IPs start from 127.0.0.{start}
-def mk_cluster_env(start: int, num_nodes: int, opts: RunOpts) -> List[LocalNodeEnv]:
+def mk_cluster_env(start: int, num_nodes: int, opts: RunOpts, ring_delay_ms: int = 3000) -> List[LocalNodeEnv]:
     assert start + num_nodes <= 256
     assert num_nodes > 0
 
     ips = [f'127.0.0.{i}' for i in range(start, num_nodes + start)]
     envs = [LocalNodeEnv(
-                cfg = NodeConfig(ip_addr = i, seed_ip_addr = ips[0]),
+                cfg = NodeConfig(ip_addr = i, seed_ip_addr = ips[0], ring_delay_ms = ring_delay_ms),
                 opts = opts)
             for i in ips]
 
