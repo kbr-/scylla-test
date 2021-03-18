@@ -20,9 +20,8 @@ def current_session(serv: libtmux.Server) -> Optional[libtmux.Session]:
 
 def create_cluster(
         cfg_tmpl: dict, run_path: Path, sess: libtmux.Session, scylla_path: Path,
-        ip_start: int, num_nodes: int, smp: int, overprovisioned: bool,
-        stall_notify_ms: Optional[int]) -> List[TmuxNode]:
-    envs = mk_dev_cluster_env(ip_start, num_nodes, smp, overprovisioned, stall_notify_ms)
+        ip_start: int, num_nodes: int, opts: RunOpts) -> List[TmuxNode]:
+    envs = mk_cluster_env(ip_start, num_nodes, opts)
     nodes = [TmuxNode(cfg_tmpl, run_path, e, sess, scylla_path) for e in envs]
     return nodes
 
@@ -77,10 +76,14 @@ if __name__ == "__main__":
 
     cfg_tmpl: dict = load_cfg_template()
 
+    opts = replace(RunOpts(),
+            smp = num_shards,
+            overprovisioned = overprovisioned,
+            stall_notify_ms = stall_notify_ms)
+
     ip_starts = itertools.accumulate([1] + num_nodes, operator.add)
     log('Creating {} clusters...'.format(len(num_nodes)))
-    cs = [create_cluster(cfg_tmpl, run_path, sess, scylla_path, ip_start, num,
-                num_shards, overprovisioned, stall_notify_ms)
+    cs = [create_cluster(cfg_tmpl, run_path, sess, scylla_path, ip_start, num, opts)
             for ip_start, num in zip(ip_starts, num_nodes)]
 
     if start_clusters:
