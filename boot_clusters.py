@@ -82,6 +82,7 @@ if __name__ == "__main__":
     cfg_tmpl: dict = load_cfg_template()
 
     opts = replace(RunOpts(),
+            developer_mode = True,
             smp = num_shards,
             overprovisioned = overprovisioned,
             stall_notify_ms = stall_notify_ms)

@@ -145,7 +145,7 @@ if __name__ == "__main__":
     tmux_sess = serv.new_session(session_name = f'scylla-test-{run_id}', start_directory = run_path)
 
     master_envs = mk_cluster_env(start = 10, num_nodes = int(bootstrap_node) + num_master_nodes,
-            opts = replace(RunOpts(), overprovisioned = True), ring_delay_ms = ring_delay_ms)
+            opts = replace(RunOpts(), developer_mode = True, overprovisioned = True), ring_delay_ms = ring_delay_ms)
     master_nodes = [TmuxNode(cfg_tmpl, run_path, e, tmux_sess, scylla_path) for e in master_envs]
 
     new_node = None
@@ -158,7 +158,7 @@ if __name__ == "__main__":
         nemeses = [PauseNemesis(n) for n in master_nodes]
 
     replica_envs = mk_cluster_env(start = 20, num_nodes = 1,
-            opts = replace(RunOpts(), overprovisioned = True), ring_delay_ms = ring_delay_ms)
+            opts = replace(RunOpts(), developer_mode = True, overprovisioned = True), ring_delay_ms = ring_delay_ms)
     replica_nodes = [TmuxNode(cfg_tmpl, run_path, e, tmux_sess, scylla_path) for e in replica_envs]
 
     log('tmux session name:', f'scylla-test-{run_id}')
