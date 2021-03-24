@@ -341,7 +341,7 @@ if __name__ == "__main__":
 
         log('Waiting for stressor to finish...')
         stressor_proc.wait()
-        log('Gemini return code:', stressor_proc.returncode)
+        log('Stressor return code:', stressor_proc.returncode)
 
         log('Letting replicator run for a while (90s)...')
         time.sleep(90)
