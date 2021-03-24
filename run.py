@@ -203,7 +203,7 @@ if __name__ == "__main__":
         if use_gemini:
             stressor_proc = stack.enter_context(subprocess.Popen([
                 'gemini',
-                '-d', '--duration', '{}s'.format(duration), '--warmup', '0',
+                '--duration', '{}s'.format(duration), '--warmup', '0',
                 '-c', '{}'.format(gemini_concurrency),
                 '-m', 'write',
                 '--non-interactive',
