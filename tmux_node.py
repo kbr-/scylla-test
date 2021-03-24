@@ -118,8 +118,25 @@ class TmuxNode:
             self.pid = int(pidfile.read())
 
     def restart(self) -> None:
-        log('Killing node', self.name, '...')
+        log('Killing node', self.name, 'with SIGTERM...')
         os.kill(self.pid, signal.SIGTERM)
+        while is_running(self.pid):
+            time.sleep(1)
+
+        self.window.panes[0].send_keys('./run.sh')
+        log_file = self.path / 'scyllalog'
+        log('Waiting for node', self.name, 'to restart...')
+        while not log_file.is_file():
+            time.sleep(1)
+        wait_for_init_path(log_file)
+        log('Node', self.name, 'restarted.')
+
+        with open(self.path / 'scylla.pid') as pidfile:
+            self.pid = int(pidfile.read())
+
+    def hard_restart(self) -> None:
+        log('Killing node', self.name, 'with SIGKILL...')
+        os.kill(self.pid, signal.SIGKILL)
         while is_running(self.pid):
             time.sleep(1)
 
