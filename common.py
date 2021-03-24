@@ -4,6 +4,8 @@ from contextlib import closing
 import datetime
 import subprocess
 import re
+import errno
+import os
 
 def log(*args):
     print(datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), *args, flush=True)
@@ -38,3 +40,11 @@ def wait_for_init(scylla_log_lines: Iterator[str]) -> None:
 def wait_for_init_path(scylla_log: Path) -> None:
     with closing(tail(str(scylla_log.resolve()))) as t:
         wait_for_init(t)
+
+def is_running(pid: int):
+    try:
+        os.kill(pid, 0)
+    except OSError as err:
+        if err.errno == errno.ESRCH:
+            return False
+    return True

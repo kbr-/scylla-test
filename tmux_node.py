@@ -33,16 +33,14 @@ class LocalNodeEnv:
 def mk_run_script(opts: RunOpts, scylla_path: Path) -> str:
     return """#!/bin/bash
 set -m
-{path} \\
+({path} \\
     --smp {smp} \\
     --max-io-requests {max_io_requests} \\
     --developer-mode={developer_mode} \\
     {overprovisioned} \\
     {skip_gossip_wait} \\
     {stall_notify_ms} \\
-    2>&1 | tee scyllalog &
-echo $! > scylla.pid
-fg
+    2>&1 & echo $! >&3) 3>scylla.pid | tee scyllalog &
 """.format(
         path = scylla_path,
         smp = opts.smp,
@@ -85,6 +83,7 @@ class TmuxNode:
         self.name = env.cfg.ip_addr
         self.path = base_path / self.name
         self.env = env
+        self.no_kills = 0
 
         self.path.mkdir(parents=True)
 
@@ -100,7 +99,6 @@ class TmuxNode:
 
         self.window = sess.new_window(
             window_name = self.name, start_directory = self.path, attach = False)
-        self.running = False
 
     # Start node and wait for initialization.
     # Assumes that `start` wasn't called yet.
@@ -116,7 +114,23 @@ class TmuxNode:
         wait_for_init_path(log_file)
         log('Node', self.name, 'initialized.')
 
-        self.running = True
+        with open(self.path / 'scylla.pid') as pidfile:
+            self.pid = int(pidfile.read())
+
+    def restart(self) -> None:
+        log('Killing node', self.name, '...')
+        os.kill(self.pid, signal.SIGTERM)
+        while is_running(self.pid):
+            time.sleep(1)
+
+        self.window.panes[0].send_keys('./run.sh')
+        log_file = self.path / 'scyllalog'
+        log('Waiting for node', self.name, 'to restart...')
+        while not log_file.is_file():
+            time.sleep(1)
+        wait_for_init_path(log_file)
+        log('Node', self.name, 'restarted.')
+
         with open(self.path / 'scylla.pid') as pidfile:
             self.pid = int(pidfile.read())
 
