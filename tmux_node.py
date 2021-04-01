@@ -26,6 +26,11 @@ class RunOpts(SeastarOpts, ScyllaOpts):
     pass
 
 @dataclass(frozen=True)
+class ClusterConfig:
+    ring_delay_ms: int
+    hinted_handoff_enabled: bool
+
+@dataclass(frozen=True)
 class LocalNodeEnv:
     cfg: NodeConfig
     opts: RunOpts
@@ -51,13 +56,17 @@ set -m
         stall_notify_ms = '--blocked-reactor-notify-ms {}'.format(opts.stall_notify_ms) if opts.stall_notify_ms else '')
 
 # IPs start from 127.0.0.{start}
-def mk_cluster_env(start: int, num_nodes: int, opts: RunOpts, ring_delay_ms: int = 3000) -> List[LocalNodeEnv]:
+def mk_cluster_env(start: int, num_nodes: int, opts: RunOpts, cluster_cfg: ClusterConfig) -> List[LocalNodeEnv]:
     assert start + num_nodes <= 256
     assert num_nodes > 0
 
     ips = [f'127.0.0.{i}' for i in range(start, num_nodes + start)]
     envs = [LocalNodeEnv(
-                cfg = NodeConfig(ip_addr = i, seed_ip_addr = ips[0], ring_delay_ms = ring_delay_ms),
+                cfg = NodeConfig(
+                    ip_addr = i,
+                    seed_ip_addr = ips[0],
+                    ring_delay_ms = cluster_cfg.ring_delay_ms,
+                    hinted_handoff_enabled = cluster_cfg.hinted_handoff_enabled),
                 opts = opts)
             for i in ips]
 

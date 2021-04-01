@@ -12,8 +12,8 @@ from tmux import *
 
 def create_cluster(
         cfg_tmpl: dict, run_path: Path, sess: libtmux.Session, scylla_path: Path,
-        ip_start: int, num_nodes: int, opts: RunOpts, ring_delay_ms: int) -> List[TmuxNode]:
-    envs = mk_cluster_env(ip_start, num_nodes, opts, ring_delay_ms)
+        ip_start: int, num_nodes: int, opts: RunOpts, cluster_cfg: ClusterConfig) -> List[TmuxNode]:
+    envs = mk_cluster_env(ip_start, num_nodes, opts, cluster_cfg)
     nodes = [TmuxNode(cfg_tmpl, run_path, e, sess, scylla_path) for e in envs]
     return nodes
 
@@ -45,14 +45,14 @@ if __name__ == "__main__":
     parser.add_argument('--ring_delay_ms', type=int, default=3000)
     args = parser.parse_args()
 
-    scylla_path = args.scylla_path.resolve()
-    run_path = args.run_path.resolve()
-    num_nodes = args.num_nodes
-    num_shards = args.num_shards if args.num_shards else 3
-    overprovisioned = bool(args.overprovisioned)
-    stall_notify_ms = args.stall_notify_ms
-    start_clusters = not args.no_boot
-    ring_delay_ms = args.ring_delay_ms
+    scylla_path: Path = args.scylla_path.resolve()
+    run_path: Path = args.run_path.resolve()
+    num_nodes: List[int] = args.num_nodes
+    num_shards: int = args.num_shards if args.num_shards else 3
+    overprovisioned: bool = bool(args.overprovisioned)
+    stall_notify_ms: int = args.stall_notify_ms
+    start_clusters: bool = not args.no_boot
+    ring_delay_ms: int = args.ring_delay_ms
     if any(n <= 0 for n in num_nodes):
         print('Cluster sizes must be positive')
         exit(1)
@@ -71,17 +71,22 @@ if __name__ == "__main__":
         '\nstall_notify_ms: {}'.format(stall_notify_ms) if stall_notify_ms else '',
         start_clusters))
 
-    cfg_tmpl: dict = load_cfg_template()
-
     opts = replace(RunOpts(),
             developer_mode = True,
             smp = num_shards,
             overprovisioned = overprovisioned,
             stall_notify_ms = stall_notify_ms)
 
+    cluster_cfg = ClusterConfig(
+        ring_delay_ms = ring_delay_ms,
+        hinted_handoff_enabled = False,
+    )
+
+    cfg_tmpl: dict = load_cfg_template()
+
     ip_starts = itertools.accumulate([1] + num_nodes, operator.add)
     log('Creating {} clusters...'.format(len(num_nodes)))
-    cs = [create_cluster(cfg_tmpl, run_path, sess, scylla_path, ip_start, num, opts, ring_delay_ms)
+    cs = [create_cluster(cfg_tmpl, run_path, sess, scylla_path, ip_start, num, opts, cluster_cfg)
             for ip_start, num in zip(ip_starts, num_nodes)]
 
     if start_clusters:

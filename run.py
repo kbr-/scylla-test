@@ -126,23 +126,23 @@ if __name__ == "__main__":
     parser.add_argument('--ring_delay_ms', type=int, default=3000)
     args = parser.parse_args()
 
-    scylla_path = args.scylla_path.resolve()
-    replicator_path = args.replicator_path.resolve()
-    migrate_path = args.migrate_path.resolve()
-    use_gemini = args.gemini
-    use_cql = args.cql
+    scylla_path: Path = args.scylla_path.resolve()
+    replicator_path: Path = args.replicator_path.resolve()
+    migrate_path: Path = args.migrate_path.resolve()
+    use_gemini: bool = args.gemini
+    use_cql: bool = args.cql
     if use_cql:
-        cqlsh_path = args.cqlsh_path.resolve()
-    bootstrap_node = not args.no_bootstrap_node
-    duration = args.duration
-    with_pauses = args.with_pauses
-    with_restarts = args.with_restarts
-    gemini_concurrency = args.gemini_concurrency
-    ring_delay_ms = args.ring_delay_ms
+        cqlsh_path: Path = args.cqlsh_path.resolve()
+    bootstrap_node: bool = not args.no_bootstrap_node
+    duration: int = args.duration
+    with_pauses: bool = args.with_pauses
+    with_restarts: bool = args.with_restarts
+    gemini_concurrency: int = args.gemini_concurrency
+    ring_delay_ms: int = args.ring_delay_ms
     log('Scylla: {}\nReplicator: {}\nMigrate: {}\nuse_gemini: {}\nuse_cql: {}\nbootstrap_node: {}\nduration: {}s\npauses: {}\nrestarts: {}\nring_delay_ms: {}'.format(
         scylla_path, replicator_path, migrate_path, use_gemini, use_cql, bootstrap_node, duration, with_pauses, with_restarts, ring_delay_ms))
 
-    gemini_seed = args.gemini_seed
+    gemini_seed: int = args.gemini_seed
     if gemini_seed is None:
         gemini_seed = random.randint(1, 1000)
     if gemini_seed < 1:
@@ -168,6 +168,11 @@ if __name__ == "__main__":
         print('preimage/postimage supported with gemini only')
         exit(1)
 
+    cluster_cfg = ClusterConfig(
+        ring_delay_ms = ring_delay_ms,
+        hinted_handoff_enabled = False,
+    )
+
     cfg_tmpl: dict = load_cfg_template()
 
     run_id: str = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
@@ -185,7 +190,7 @@ if __name__ == "__main__":
     tmux_sess = serv.new_session(session_name = f'scylla-test-{run_id}', start_directory = run_path)
 
     master_envs = mk_cluster_env(start = 10, num_nodes = int(bootstrap_node) + num_master_nodes,
-            opts = replace(RunOpts(), developer_mode = True, overprovisioned = True), ring_delay_ms = ring_delay_ms)
+            opts = replace(RunOpts(), developer_mode = True, overprovisioned = True), cluster_cfg = cluster_cfg)
     master_nodes = [TmuxNode(cfg_tmpl, run_path, e, tmux_sess, scylla_path) for e in master_envs]
 
     new_node = None
@@ -201,7 +206,7 @@ if __name__ == "__main__":
         nemeses = [RestartNemesis(master_nodes, True)]
 
     replica_envs = mk_cluster_env(start = 20, num_nodes = 1,
-            opts = replace(RunOpts(), developer_mode = True, overprovisioned = True), ring_delay_ms = ring_delay_ms)
+            opts = replace(RunOpts(), developer_mode = True, overprovisioned = True), cluster_cfg = cluster_cfg)
     replica_nodes = [TmuxNode(cfg_tmpl, run_path, e, tmux_sess, scylla_path) for e in replica_envs]
 
     log('tmux session name:', f'scylla-test-{run_id}')

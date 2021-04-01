@@ -6,7 +6,8 @@ import yaml
 class NodeConfig:
     ip_addr: str
     seed_ip_addr: str
-    ring_delay_ms: int = 3000
+    ring_delay_ms: int
+    hinted_handoff_enabled: bool
 
 def load_cfg_template() -> dict:
     with open('resources/scylla.yaml') as f:
@@ -24,7 +25,8 @@ def mk_node_cfg(tmpl: dict, cfg: NodeConfig) -> dict:
                     'seeds': '{}'.format(','.join([cfg.seed_ip_addr]))
                     }]
                 }],
-            'ring_delay_ms': cfg.ring_delay_ms
+            'ring_delay_ms': cfg.ring_delay_ms,
+            'hinted_handoff_enabled': cfg.hinted_handoff_enabled
         })
 
 #print(yaml.dump(mk_node_cfg(NodeConfig(seed_ip_addr='127.0.0.1', ip_addr='127.0.0.1'))))
