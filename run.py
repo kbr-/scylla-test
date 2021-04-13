@@ -20,7 +20,8 @@ import itertools
 import logging
 import sys
 
-from cassandra.cluster import Cluster
+from cassandra.cluster import Cluster, ExecutionProfile, EXEC_PROFILE_DEFAULT
+from cassandra import policies
 
 from node_config import *
 from tmux_node import *
@@ -263,8 +264,9 @@ if __name__ == "__main__":
     if use_cql:
         TABLE_NAMES = [os.path.splitext(f)[0] for f in os.listdir('./cql/') if os.path.isfile(os.path.join('./cql/', f))]
     
-    cm = Cluster([n.ip() for n in master_nodes])
-    cr = Cluster([n.ip() for n in replica_nodes])
+    profile = ExecutionProfile(load_balancing_policy = policies.TokenAwarePolicy(policies.DCAwareRoundRobinPolicy()))
+    cm = Cluster([n.ip() for n in master_nodes], protocol_version = 4, execution_profiles={EXEC_PROFILE_DEFAULT: profile})
+    cr = Cluster([n.ip() for n in replica_nodes], protocol_version = 4, execution_profiles={EXEC_PROFILE_DEFAULT: profile})
 
     w = tmux_sess.windows[0]
     w.split_window(start_directory = run_path, attach = False)
