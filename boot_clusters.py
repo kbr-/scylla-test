@@ -11,10 +11,11 @@ from tmux_node import *
 from tmux import *
 
 def create_cluster(
+        logger: logging.Logger,
         cfg_tmpl: dict, run_path: Path, sess: libtmux.Session, scylla_path: Path,
         ip_start: int, num_nodes: int, opts: RunOpts, cluster_cfg: ClusterConfig) -> List[TmuxNode]:
     envs = mk_cluster_env(ip_start, num_nodes, opts, cluster_cfg)
-    nodes = [TmuxNode(cfg_tmpl, run_path, e, sess, scylla_path) for e in envs]
+    nodes = [TmuxNode(logger, cfg_tmpl, run_path, e, sess, scylla_path) for e in envs]
     return nodes
 
 def boot(nodes: List[TmuxNode]) -> Thread:
@@ -31,8 +32,6 @@ if __name__ == "__main__":
     if not sess:
         print('Must run in a tmux session.')
         exit(1)
-
-    log("Current session: {}".format(sess))
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--scylla-path', type=Path, required=True)
@@ -66,7 +65,19 @@ if __name__ == "__main__":
         print('ring_delay_ms must be positive')
         exit(1)
 
-    log('Scylla: {}\nRun path: {}\nNum nodes: {}\nNum shards: {}\nOverprovisioned: {}{}\nStart clusters: {}'.format(
+    logging.basicConfig(
+        level = logging.INFO,
+        format = "%(asctime)s [%(levelname)s] %(message)s",
+        handlers = [
+            logging.FileHandler(run_path / 'run.log'),
+            logging.StreamHandler(sys.stdout)
+        ]
+    )
+
+    logger = logging.getLogger()
+
+    logger.info("Current session: {}".format(sess))
+    logger.info('Scylla: {}\nRun path: {}\nNum nodes: {}\nNum shards: {}\nOverprovisioned: {}{}\nStart clusters: {}'.format(
         scylla_path, run_path, num_nodes, num_shards, overprovisioned,
         '\nstall_notify_ms: {}'.format(stall_notify_ms) if stall_notify_ms else '',
         start_clusters))
@@ -85,11 +96,11 @@ if __name__ == "__main__":
     cfg_tmpl: dict = load_cfg_template()
 
     ip_starts = itertools.accumulate([1] + num_nodes, operator.add)
-    log('Creating {} clusters...'.format(len(num_nodes)))
-    cs = [create_cluster(cfg_tmpl, run_path, sess, scylla_path, ip_start, num, opts, cluster_cfg)
+    logger.info('Creating {} clusters...'.format(len(num_nodes)))
+    cs = [create_cluster(logger, cfg_tmpl, run_path, sess, scylla_path, ip_start, num, opts, cluster_cfg)
             for ip_start, num in zip(ip_starts, num_nodes)]
 
     if start_clusters:
         ts = [boot(c) for c in cs]
-        log('Waiting for clusters to boot...')
+        logger.info('Waiting for clusters to boot...')
         for t in ts: t.join()

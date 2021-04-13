@@ -7,9 +7,6 @@ import re
 import errno
 import os
 
-def log(*args):
-    print(datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), *args, flush=True)
-
 # Returns an iterator to the file's lines.
 # If not able to retrieve a next line for 1 second, yields ''.
 # Remember to close it after usage, since it keeps the file opened.
@@ -32,7 +29,6 @@ def tail(path: str) -> Iterator[str]:
 
 def wait_for_init(scylla_log_lines: Iterator[str]) -> None:
     for l in scylla_log_lines:
-        #log(l)
         ms = re.match(r".*Scylla.*initialization completed.*", l)
         if ms:
             return

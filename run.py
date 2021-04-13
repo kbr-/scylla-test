@@ -17,6 +17,8 @@ import argparse
 import random
 import queue
 import itertools
+import logging
+import sys
 
 from cassandra.cluster import Cluster
 
@@ -31,24 +33,28 @@ def cdc_opts(mode: str):
     return "{'enabled': true}"
 
 class PauseNemesis:
-    def __init__(self, n: TmuxNode):
+    def __init__(self, logger: logging.Logger, n: TmuxNode):
+        self.logger = logger
         self.n = n
         self.q: Optional[queue.Queue] = None
         self.t: Optional[Thread] = None
+
+    def log(self, *args, **kwargs) -> None:
+        self.logger.info(*args, **kwargs)
 
     def _nemesis_thread(self, q: queue.Queue) -> None:
         while True:
             time.sleep(5)
             if not q.empty():
                 break
-            log('Nemesis: pausing {}'.format(self.n.ip()))
+            self.log('Nemesis: pausing {}'.format(self.n.ip()))
             self.n.pause()
             time.sleep(3 + random.randrange(0,2))
             if not q.empty():
                 break
-            log('Nemesis: unpausing {}'.format(self.n.ip()))
+            self.log('Nemesis: unpausing {}'.format(self.n.ip()))
             self.n.unpause()
-        log('Nemesis: asked to finish, unpausing {}'.format(self.n.ip()))
+        self.log('Nemesis: asked to finish, unpausing {}'.format(self.n.ip()))
         self.n.unpause()
 
     def start(self) -> None:
@@ -70,11 +76,15 @@ class PauseNemesis:
         self.t = None
 
 class RestartNemesis:
-    def __init__(self, ns: List[TmuxNode], hard: bool):
+    def __init__(self, logger: logging.Logger, ns: List[TmuxNode], hard: bool):
+        self.logger = logger
         self.ns = ns
         self.hard = hard
         self.q: Optional[queue.Queue] = None
         self.t: Optional[Thread] = None
+
+    def log(self, *args, **kwargs) -> None:
+        self.logger.info(*args, **kwargs)
 
     def _nemesis_thread(self, q: queue.Queue) -> None:
         while True:
@@ -82,12 +92,12 @@ class RestartNemesis:
             if not q.empty():
                 break
             n = random.choice(self.ns)
-            log('Nemesis: {}restarting {}'.format('hard ' if self.hard else '', n.ip()))
+            self.log('Nemesis: {}restarting {}'.format('hard ' if self.hard else '', n.ip()))
             if self.hard:
                 n.hard_restart()
             else:
                 n.restart()
-        log('Restart Nemesis: asked to finish')
+        self.log('Restart Nemesis: asked to finish')
 
     def start(self) -> None:
         if self.t:
@@ -139,8 +149,6 @@ if __name__ == "__main__":
     with_restarts: bool = args.with_restarts
     gemini_concurrency: int = args.gemini_concurrency
     ring_delay_ms: int = args.ring_delay_ms
-    log('Scylla: {}\nReplicator: {}\nMigrate: {}\nuse_gemini: {}\nuse_cql: {}\nbootstrap_node: {}\nduration: {}s\npauses: {}\nrestarts: {}\nring_delay_ms: {}'.format(
-        scylla_path, replicator_path, migrate_path, use_gemini, use_cql, bootstrap_node, duration, with_pauses, with_restarts, ring_delay_ms))
 
     gemini_seed: int = args.gemini_seed
     if gemini_seed is None:
@@ -158,9 +166,6 @@ if __name__ == "__main__":
         print('ring_delay_ms must be positive')
         exit(1)
 
-    if use_gemini:
-        log(f'gemini seed: {gemini_seed}\ngemini concurrency: {gemini_concurrency}')
-
     num_master_nodes = 1 if args.single else 3
     mode = args.mode
 
@@ -176,22 +181,52 @@ if __name__ == "__main__":
     cfg_tmpl: dict = load_cfg_template()
 
     run_id: str = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-    log('run ID:', run_id)
 
     runs_path = Path.cwd() / 'runs'
     run_path = runs_path / run_id
     run_path.mkdir(parents=True)
+
+    logging.basicConfig(
+        level = logging.INFO,
+        format = "%(asctime)s [%(levelname)s] %(message)s",
+        handlers = [
+            logging.FileHandler(run_path / 'run.log'),
+            logging.StreamHandler(sys.stdout)
+        ]
+    )
+
+    logger = logging.getLogger()
+
+    gemini_log = f"""
+    gemini seed: {gemini_seed}
+    gemini concurrency: {gemini_concurrency}""" if use_gemini else ""
+
+    logger.info(f"""
+    scylla: {scylla_path}
+    replicator: {replicator_path}
+    migrate: {migrate_path}
+    use_gemini: {use_gemini}
+    use_cql: {use_cql}
+    bootstrap_node: {bootstrap_node}
+    duration: {duration}
+    pauses: {with_pauses}
+    restrats: {with_restarts}
+    ring_delay_ms: {ring_delay_ms}"""
+    f"{gemini_log}"
+    f"""
+    run ID: {run_id}""")
 
     latest_run_path = runs_path / 'latest'
     latest_run_path.unlink(missing_ok = True)
     latest_run_path.symlink_to(run_path, target_is_directory = True)
 
     serv = libtmux.Server()
-    tmux_sess = serv.new_session(session_name = f'scylla-test-{run_id}', start_directory = run_path)
+    session_name = f'scylla-test-{run_id}'
+    tmux_sess = serv.new_session(session_name = session_name, start_directory = run_path)
 
     master_envs = mk_cluster_env(start = 10, num_nodes = int(bootstrap_node) + num_master_nodes,
             opts = replace(RunOpts(), developer_mode = True, overprovisioned = True), cluster_cfg = cluster_cfg)
-    master_nodes = [TmuxNode(cfg_tmpl, run_path, e, tmux_sess, scylla_path) for e in master_envs]
+    master_nodes = [TmuxNode(logger, cfg_tmpl, run_path, e, tmux_sess, scylla_path) for e in master_envs]
 
     new_node = None
     if bootstrap_node:
@@ -201,15 +236,15 @@ if __name__ == "__main__":
     nemeses: Optional[Union[List[PauseNemesis], List[RestartNemesis]]] = None
     # FIXME: make them composable
     if with_pauses:
-        nemeses = [PauseNemesis(n) for n in master_nodes]
+        nemeses = [PauseNemesis(logger, n) for n in master_nodes]
     if with_restarts:
-        nemeses = [RestartNemesis(master_nodes, True)]
+        nemeses = [RestartNemesis(logger, master_nodes, True)]
 
     replica_envs = mk_cluster_env(start = 20, num_nodes = 1,
             opts = replace(RunOpts(), developer_mode = True, overprovisioned = True), cluster_cfg = cluster_cfg)
-    replica_nodes = [TmuxNode(cfg_tmpl, run_path, e, tmux_sess, scylla_path) for e in replica_envs]
+    replica_nodes = [TmuxNode(logger, cfg_tmpl, run_path, e, tmux_sess, scylla_path) for e in replica_envs]
 
-    log('tmux session name:', f'scylla-test-{run_id}')
+    logger.info(f'tmux session name: {session_name}')
 
     def start_cluster(nodes: List[TmuxNode]):
         for n in nodes:
@@ -239,7 +274,7 @@ if __name__ == "__main__":
     w.panes[1].send_keys('tail -F replicator.log -n +1')
     w.panes[2].send_keys('tail -F migrate.log -n +1')
 
-    log('Waiting for the latest CDC generation to start...')
+    logger.info('Waiting for the latest CDC generation to start...')
     time.sleep(15)
 
     with ExitStack() as stack:
@@ -247,7 +282,7 @@ if __name__ == "__main__":
         repl_log = stack.enter_context(open(run_path / 'replicator.log', 'w'))
         migrate_log = stack.enter_context(open(run_path / 'migrate.log', 'w'))
 
-        log('Starting stressor')
+        logger.info('Starting stressor')
         if use_gemini:
             stressor_proc = stack.enter_context(subprocess.Popen([
                 'gemini',
@@ -281,11 +316,11 @@ if __name__ == "__main__":
                 "-node {}".format(master_nodes[0].ip())],
                 stdout=stressor_log, stderr=subprocess.STDOUT))
 
-        log('Letting stressor run for a while...')
+        logger.info('Letting stressor run for a while...')
         # Sleep long enough for stressor to create the keyspace
         time.sleep(10)
 
-        log('Fetching schema definitions from master cluster.')
+        logger.info('Fetching schema definitions from master cluster.')
         cm.control_connection_timeout = 20
         with cm.connect() as _:
             cm.refresh_schema_metadata(max_schema_agreement_wait=10)
@@ -299,23 +334,23 @@ if __name__ == "__main__":
                     del table.extensions['cdc']
                 table_ddls.append(table.as_cql_query())
 
-        log('User types:\n{}'.format('\n'.join(ut_ddls)))
-        log('Table definitions:\n{}'.format('\n'.join(table_ddls)))
+        logger.info('User types:\n{}'.format('\n'.join(ut_ddls)))
+        logger.info('Table definitions:\n{}'.format('\n'.join(table_ddls)))
 
-        log('Letting stressor run for a while...')
+        logger.info('Letting stressor run for a while...')
         time.sleep(5)
 
-        log('Creating schema on replica cluster.')
+        logger.info('Creating schema on replica cluster.')
         with cr.connect() as sess:
             sess.execute(f"create keyspace if not exists {KS_NAME}"
                           " with replication = {'class': 'SimpleStrategy', 'replication_factor': 1}")
             for stmt in ut_ddls + table_ddls:
                 sess.execute(stmt)
 
-        log('Letting stressor run for a while...')
+        logger.info('Letting stressor run for a while...')
         time.sleep(5)
 
-        log('Starting replicator')
+        logger.info('Starting replicator')
         repl_proc = stack.enter_context(subprocess.Popen([
             'java', '-cp', replicator_path, 'com.scylladb.cdc.replicator.Main',
             '-k', KS_NAME, '-t', ','.join(TABLE_NAMES), '-s', master_nodes[0].ip(), '-d', replica_nodes[0].ip(), '-cl', 'one',
@@ -323,48 +358,48 @@ if __name__ == "__main__":
             stdout=repl_log, stderr=subprocess.STDOUT))
 
         if nemeses:
-            log('Starting nemeses')
+            logger.info('Starting nemeses')
             for n in nemeses:
                 n.start()
 
-        log('Letting stressor run for a while...')
+        logger.info('Letting stressor run for a while...')
         time.sleep(15)
 
         if new_node:
             if nemeses:
-                log('Stopping nemeses before bootstrapping a node')
+                logger.info('Stopping nemeses before bootstrapping a node')
                 for n in nemeses:
                     n.stop()
 
-            log('Bootstrapping new node')
+            logger.info('Bootstrapping new node')
             new_node.start()
 
             if nemeses:
-                log('Restarting nemeses after bootstrapping a node')
+                logger.info('Restarting nemeses after bootstrapping a node')
                 for n in nemeses:
                     n.start()
 
-        log('Waiting for stressor to finish...')
+        logger.info('Waiting for stressor to finish...')
         stressor_proc.wait()
-        log('Stressor return code:', stressor_proc.returncode)
+        logger.info(f'Stressor return code: {stressor_proc.returncode}')
 
-        log('Letting replicator run for a while (90s)...')
+        logger.info('Letting replicator run for a while (90s)...')
         time.sleep(90)
 
         if nemeses:
-            log('Stopping nemeses')
+            logger.info('Stopping nemeses')
             for n in nemeses:
                 n.stop()
 
-        #log('Letting replicator run for a while (240s)...')
+        #logger.info('Letting replicator run for a while (240s)...')
         #time.sleep(240)
 
-        log('Waiting for replicator to finish...')
+        logger.info('Waiting for replicator to finish...')
         repl_proc.send_signal(signal.SIGINT)
         repl_proc.wait()
-        log('Replicator return code:', repl_proc.returncode)
+        logger.info(f'Replicator return code: {repl_proc.returncode}')
 
-        log('Comparing table contents using scylla-migrate...')
+        logger.info('Comparing table contents using scylla-migrate...')
         migrate_res = subprocess.run(
             '{} check --master-address {} --replica-address {}'
             ' --ignore-schema-difference {} {}'.format(
@@ -372,7 +407,7 @@ if __name__ == "__main__":
                 '--no-writetime' if mode == 'postimage' else '',
                 ' '.join(map(lambda e: e[0] + '.' + e[1], zip(itertools.repeat(KS_NAME), TABLE_NAMES)))),
             shell = True, stdout = migrate_log, stderr = subprocess.STDOUT)
-        log('Migrate return code:', migrate_res.returncode)
+        logger.info(f'Migrate return code: {migrate_res.returncode}')
 
     with open(run_path / 'migrate.log', 'r') as f:
         ok = 'Consistency check OK.\n' in (line for line in f)
@@ -382,8 +417,8 @@ if __name__ == "__main__":
             ok = ok and not ('Inconsistency detected.\n' in (line for line in f))
 
     if ok:
-        log('Consistency OK')
+        logger.info('Consistency OK')
     else:
-        log('Inconsistency detected')
+        logger.info('Inconsistency detected')
 
-    log('tmux session name:', f'scylla-test-{run_id}')
+    logger.info(f'tmux session name: {session_name}')

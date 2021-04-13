@@ -4,6 +4,7 @@ import libtmux
 import time
 import os
 import signal
+import logging
 from dataclasses import replace
 
 from node_config import *
@@ -88,7 +89,8 @@ class TmuxNode:
 
     # Create a directory for the node with configuration and run script,
     # create a tmux window, but don't start the node yet
-    def __init__(self, cfg_tmpl: dict, base_path: Path, env: LocalNodeEnv, sess: libtmux.Session, scylla_path: Path):
+    def __init__(self, logger: logging.Logger, cfg_tmpl: dict, base_path: Path, env: LocalNodeEnv, sess: libtmux.Session, scylla_path: Path):
+        self.logger = logger
         self.name = env.cfg.ip_addr
         self.path = base_path / self.name
         self.env = env
@@ -109,6 +111,9 @@ class TmuxNode:
         self.window = sess.new_window(
             window_name = self.name, start_directory = self.path, attach = False)
 
+    def log(self, *args, **kwargs) -> None:
+        self.logger.info(*args, **kwargs)
+
     # Start node and wait for initialization.
     # Assumes that `start` wasn't called yet.
     def start(self) -> None:
@@ -117,45 +122,45 @@ class TmuxNode:
         self.window.panes[0].send_keys('./run.sh')
 
         log_file = self.path / 'scyllalog'
-        log('Waiting for node', self.name, 'to initialize...')
+        self.log(f'Waiting for node {self.name} to initialize...')
         while not log_file.is_file():
             time.sleep(1)
         wait_for_init_path(log_file)
-        log('Node', self.name, 'initialized.')
+        self.log(f'Node {self.name} initialized.')
 
         with open(self.path / 'scylla.pid') as pidfile:
             self.pid = int(pidfile.read())
 
     def restart(self) -> None:
-        log('Killing node', self.name, 'with SIGTERM...')
+        self.log(f'Killing node {self.name} with SIGTERM...')
         os.kill(self.pid, signal.SIGTERM)
         while is_running(self.pid):
             time.sleep(1)
 
         self.window.panes[0].send_keys('./run.sh')
         log_file = self.path / 'scyllalog'
-        log('Waiting for node', self.name, 'to restart...')
+        self.log(f'Waiting for node {self.name} to restart...')
         while not log_file.is_file():
             time.sleep(1)
         wait_for_init_path(log_file)
-        log('Node', self.name, 'restarted.')
+        self.log(f'Node {self.name} restarted.')
 
         with open(self.path / 'scylla.pid') as pidfile:
             self.pid = int(pidfile.read())
 
     def hard_restart(self) -> None:
-        log('Killing node', self.name, 'with SIGKILL...')
+        self.log(f'Killing node {self.name} with SIGKILL...')
         os.kill(self.pid, signal.SIGKILL)
         while is_running(self.pid):
             time.sleep(1)
 
         self.window.panes[0].send_keys('./run.sh')
         log_file = self.path / 'scyllalog'
-        log('Waiting for node', self.name, 'to restart...')
+        self.log(f'Waiting for node {self.name} to restart...')
         while not log_file.is_file():
             time.sleep(1)
         wait_for_init_path(log_file)
-        log('Node', self.name, 'restarted.')
+        self.log(f'Node {self.name} restarted.')
 
         with open(self.path / 'scylla.pid') as pidfile:
             self.pid = int(pidfile.read())
