@@ -65,6 +65,7 @@ if __name__ == "__main__":
         print('ring_delay_ms must be positive')
         exit(1)
 
+    run_path.mkdir(parents=True)
     logging.basicConfig(
         level = logging.INFO,
         format = "%(asctime)s [%(levelname)s] %(message)s",
