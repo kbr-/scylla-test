@@ -135,6 +135,7 @@ if __name__ == "__main__":
     parser.add_argument('--with-pauses', default=False, action='store_true')
     parser.add_argument('--with-restarts', default=False, action='store_true')
     parser.add_argument('--ring_delay_ms', type=int, default=3000)
+    parser.add_argument('--enable-rbo', default=False, action='store_true')
     args = parser.parse_args()
 
     scylla_path: Path = args.scylla_path.resolve()
@@ -150,6 +151,7 @@ if __name__ == "__main__":
     with_restarts: bool = args.with_restarts
     gemini_concurrency: int = args.gemini_concurrency
     ring_delay_ms: int = args.ring_delay_ms
+    enable_rbo : bool = args.enable_rbo
 
     gemini_seed: int = args.gemini_seed
     if gemini_seed is None:
@@ -177,6 +179,7 @@ if __name__ == "__main__":
     cluster_cfg = ClusterConfig(
         ring_delay_ms = ring_delay_ms,
         hinted_handoff_enabled = False,
+        enable_rbo = enable_rbo
     )
 
     cfg_tmpl: dict = load_cfg_template()

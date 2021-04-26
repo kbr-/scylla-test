@@ -30,6 +30,7 @@ class RunOpts(SeastarOpts, ScyllaOpts):
 class ClusterConfig:
     ring_delay_ms: int
     hinted_handoff_enabled: bool
+    enable_rbo: bool
 
 @dataclass(frozen=True)
 class LocalNodeEnv:
@@ -67,7 +68,8 @@ def mk_cluster_env(start: int, num_nodes: int, opts: RunOpts, cluster_cfg: Clust
                     ip_addr = i,
                     seed_ip_addr = ips[0],
                     ring_delay_ms = cluster_cfg.ring_delay_ms,
-                    hinted_handoff_enabled = cluster_cfg.hinted_handoff_enabled),
+                    hinted_handoff_enabled = cluster_cfg.hinted_handoff_enabled,
+                    enable_rbo = cluster_cfg.enable_rbo),
                 opts = opts)
             for i in ips]
 

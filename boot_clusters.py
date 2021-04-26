@@ -42,6 +42,7 @@ if __name__ == "__main__":
     parser.add_argument('--stall-notify-ms', type=int)
     parser.add_argument('--no-boot', action='store_true')
     parser.add_argument('--ring_delay_ms', type=int, default=3000)
+    parser.add_argument('--enable-rbo', default=False, action='store_true')
     args = parser.parse_args()
 
     scylla_path: Path = args.scylla_path.resolve()
@@ -52,6 +53,7 @@ if __name__ == "__main__":
     stall_notify_ms: int = args.stall_notify_ms
     start_clusters: bool = not args.no_boot
     ring_delay_ms: int = args.ring_delay_ms
+    enable_rbo : bool = args.enable_rbo
     if any(n <= 0 for n in num_nodes):
         print('Cluster sizes must be positive')
         exit(1)
@@ -92,6 +94,7 @@ if __name__ == "__main__":
     cluster_cfg = ClusterConfig(
         ring_delay_ms = ring_delay_ms,
         hinted_handoff_enabled = False,
+        enable_rbo = enable_rbo
     )
 
     cfg_tmpl: dict = load_cfg_template()
