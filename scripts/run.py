@@ -179,7 +179,8 @@ if __name__ == "__main__":
     cluster_cfg = ClusterConfig(
         ring_delay_ms = ring_delay_ms,
         hinted_handoff_enabled = False,
-        enable_rbo = enable_rbo
+        enable_rbo = enable_rbo,
+        first_node_skip_gossip_settle = True,
     )
 
     cfg_tmpl: dict = load_cfg_template()

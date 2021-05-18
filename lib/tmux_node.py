@@ -30,6 +30,7 @@ class ClusterConfig:
     ring_delay_ms: int
     hinted_handoff_enabled: bool
     enable_rbo: bool
+    first_node_skip_gossip_settle: bool
 
 @dataclass(frozen=True)
 class LocalNodeEnv:
@@ -78,7 +79,8 @@ def mk_cluster_env(start: int, num_nodes: int, opts: RunOpts, cluster_cfg: Clust
             for i in ips]
 
     # Optimization to start first node faster
-    envs[0] = LocalNodeEnv(cfg = envs[0].cfg, opts = replace(envs[0].opts, skip_gossip_wait = True))
+    if cluster_cfg.first_node_skip_gossip_settle:
+        envs[0] = LocalNodeEnv(cfg = envs[0].cfg, opts = replace(envs[0].opts, skip_gossip_wait = True))
 
     return envs
 

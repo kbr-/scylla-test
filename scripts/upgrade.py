@@ -67,7 +67,8 @@ stall_notify_ms: {cfg.stall_notify_ms}
     cluster_cfg = ClusterConfig(
         ring_delay_ms = cfg.ring_delay_ms,
         hinted_handoff_enabled = False,
-        enable_rbo = cfg.enable_rbo
+        enable_rbo = cfg.enable_rbo,
+        first_node_skip_gossip_settle = False,
     )
 
     cfg_tmpl: dict = load_cfg_template()
@@ -82,9 +83,6 @@ stall_notify_ms: {cfg.stall_notify_ms}
     logger.info('Waiting for the cluster to boot...')
     for n in c:
         n.start()
-
-    if cfg.interactive:
-        input('Press Enter to start rolling upgrade.')
 
     node_map: Dict[int, str] = {i: c[i].ip() for i in range(len(c))}
     logger.info(f'Node map: {node_map}')
@@ -113,7 +111,8 @@ stall_notify_ms: {cfg.stall_notify_ms}
     if not ord:
         ord = list(node_map.keys())
         random.shuffle(ord)
-        logger.info(f'Random rolling upgrade order: {ord}')
+
+    logger.info(f'Rolling upgrade order: {[c[i].ip() for i in ord]}')
 
     assert ord and set(ord) == set(node_map.keys())
 
