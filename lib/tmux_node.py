@@ -7,8 +7,8 @@ import signal
 import logging
 from dataclasses import replace
 
-from node_config import *
-from common import *
+from lib.node_config import *
+from lib.common import *
 
 @dataclass(frozen=True)
 class SeastarOpts:

@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from typing import List
+from importlib import resources
 import yaml
 
 @dataclass(frozen=True)
@@ -11,7 +12,7 @@ class NodeConfig:
     enable_rbo: bool
 
 def load_cfg_template() -> dict:
-    with open('resources/scylla.yaml') as f:
+    with resources.open_binary('resources', 'scylla.yaml') as f:
         return yaml.load(f, Loader=yaml.FullLoader)
 
 def mk_node_cfg(tmpl: dict, cfg: NodeConfig) -> dict:
@@ -30,5 +31,3 @@ def mk_node_cfg(tmpl: dict, cfg: NodeConfig) -> dict:
             'hinted_handoff_enabled': cfg.hinted_handoff_enabled,
             'enable_repair_based_node_ops': cfg.enable_rbo
         })
-
-#print(yaml.dump(mk_node_cfg(NodeConfig(seed_ip_addr='127.0.0.1', ip_addr='127.0.0.1'))))

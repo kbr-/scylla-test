@@ -23,8 +23,8 @@ import sys
 from cassandra.cluster import Cluster, ExecutionProfile, EXEC_PROFILE_DEFAULT
 from cassandra import policies
 
-from node_config import *
-from tmux_node import *
+from lib.node_config import *
+from lib.tmux_node import *
 
 def cdc_opts(mode: str):
     if mode == 'preimage':
