@@ -35,18 +35,18 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--scylla-path', type=Path, required=True)
-    parser.add_argument('--run-path', type=Path, required=True)
+    parser.add_argument('--runs-root', type=Path)
+    parser.add_argument('--run-path', type=Path)
     parser.add_argument('--num-nodes', nargs='+', type=int)
     parser.add_argument('--num-shards', type=int)
     parser.add_argument('--overprovisioned', action='store_true')
     parser.add_argument('--stall-notify-ms', type=int)
     parser.add_argument('--no-boot', action='store_true')
-    parser.add_argument('--ring_delay_ms', type=int, default=3000)
+    parser.add_argument('--ring-delay-ms', type=int, default=3000)
     parser.add_argument('--enable-rbo', default=False, action='store_true')
     args = parser.parse_args()
 
     scylla_path: Path = args.scylla_path.resolve()
-    run_path: Path = args.run_path.resolve()
     num_nodes: List[int] = args.num_nodes
     num_shards: int = args.num_shards if args.num_shards else 3
     overprovisioned: bool = bool(args.overprovisioned)
@@ -61,11 +61,22 @@ if __name__ == "__main__":
         print('Number of shards must be positive')
         exit(1)
     if stall_notify_ms and stall_notify_ms <= 0:
-        print('stall_notify_ms must be positive')
+        print('stall-notify-ms must be positive')
         exit(1)
     if ring_delay_ms < 1:
-        print('ring_delay_ms must be positive')
+        print('ring-delay-ms must be positive')
         exit(1)
+    if bool(args.run_path) == bool(args.runs_root):
+        print('pass either run-path or runs-root, but not both')
+        exit(1)
+
+    if args.runs_root:
+        runs_root: Path = args.runs_root.resolve()
+        run_id: str = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+        run_path: Path = runs_root / run_id
+    else:
+        assert args.run_path
+        run_path = args.run_path.resolve()
 
     run_path.mkdir(parents=True)
     logging.basicConfig(
