@@ -98,7 +98,7 @@ stall_notify_ms: {cfg.stall_notify_ms}
                 try:
                     ord = list(map(int, inp.split()))
                 except Exception as e:
-                    inp = input(f'Non-empty input provider, but could not parse as list of ints: "{e}". Try again:\n')
+                    inp = input(f'Non-empty input provided, but could not parse as list of ints: "{e}". Try again:\n')
                 else:
                     if set(ord) - set(node_map.keys()):
                         inp = input('Provided list contains extra keys. Try again:\n')

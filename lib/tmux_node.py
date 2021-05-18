@@ -1,5 +1,4 @@
 from pathlib import Path
-import stat
 import libtmux
 import time
 import os
@@ -57,6 +56,11 @@ set -m
         overprovisioned = '--overprovisioned' if opts.overprovisioned else '',
         stall_notify_ms = '--blocked-reactor-notify-ms {}'.format(opts.stall_notify_ms) if opts.stall_notify_ms else '')
 
+def mk_kill_script() -> str:
+    return """#!/bin/bash
+kill $(cat scylla.pid)
+"""
+
 # IPs start from 127.0.0.{start}
 def mk_cluster_env(start: int, num_nodes: int, opts: RunOpts, cluster_cfg: ClusterConfig) -> List[LocalNodeEnv]:
     assert start + num_nodes <= 256
@@ -99,11 +103,10 @@ class TmuxNode:
         self.no_kills = 0
 
         self.path.mkdir(parents=True)
+        self.__write_run_script(scylla_path)
+        self.__write_kill_script()
 
-        script_path = self.path / 'run.sh'
-        with open(script_path, 'w') as f:
-            f.write(mk_run_script(self.env.opts, scylla_path))
-        script_path.chmod(script_path.stat().st_mode | stat.S_IEXEC)
+        kill_script_path = self.path
 
         conf_path = self.path / 'conf'
         conf_path.mkdir(parents=True)
@@ -116,25 +119,22 @@ class TmuxNode:
         self.window.panes[0].send_keys('ulimit -Sn $(ulimit -Hn)')
         self.window.panes[0].send_keys('ulimit -Sn')
 
-    def log(self, *args, **kwargs) -> None:
-        self.logger.info(*args, **kwargs)
-
     # Start node and wait for initialization.
     # Assumes that the node is not running.
     def start(self) -> None:
         self.window.panes[0].send_keys('./run.sh')
         log_file = self.path / 'scyllalog'
-        self.log(f'Waiting for node {self.name} to start...')
+        self.__log(f'Waiting for node {self.name} to start...')
         while not log_file.is_file():
             time.sleep(1)
         wait_for_init_path(log_file)
-        self.log(f'Node {self.name} started.')
+        self.__log(f'Node {self.name} started.')
 
         with open(self.path / 'scylla.pid') as pidfile:
             self.pid = int(pidfile.read())
 
     def stop(self) -> None:
-        self.log(f'Killing node {self.name} with SIGTERM...')
+        self.__log(f'Killing node {self.name} with SIGTERM...')
         os.kill(self.pid, signal.SIGTERM)
         while is_running(self.pid):
             time.sleep(1)
@@ -144,7 +144,7 @@ class TmuxNode:
         self.start()
 
     def hard_stop(self) -> None:
-        self.log(f'Killing node {self.name} with SIGKILL...')
+        self.__log(f'Killing node {self.name} with SIGKILL...')
         os.kill(self.pid, signal.SIGKILL)
         while is_running(self.pid):
             time.sleep(1)
@@ -160,7 +160,21 @@ class TmuxNode:
         os.kill(self.pid, signal.SIGCONT)
 
     def reset_scylla_path(self, scylla_path: Path) -> None:
-        script_path = self.path / 'run.sh'
-        with open(script_path, 'w') as f:
-            f.write(mk_run_script(self.env.opts, scylla_path))
-        script_path.chmod(script_path.stat().st_mode | stat.S_IEXEC)
+        self.__write_run_script(scylla_path)
+
+    # Precondition: self.path directory exists
+    def __write_run_script(self, scylla_path: Path) -> None:
+        write_executable_script(
+            path = self.path / 'run.sh',
+            body = mk_run_script(self.env.opts, scylla_path)
+        )
+
+    # Precondition: self.path directory exists
+    def __write_kill_script(self) -> None:
+        write_executable_script(
+            path = self.path / 'kill.sh',
+            body = mk_kill_script()
+        )
+
+    def __log(self, *args, **kwargs) -> None:
+        self.logger.info(*args, **kwargs)

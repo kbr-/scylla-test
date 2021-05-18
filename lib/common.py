@@ -1,6 +1,7 @@
 from typing import Iterator, Tuple, Optional
 from pathlib import Path
 from contextlib import closing
+import stat
 import datetime
 import subprocess
 import re
@@ -37,10 +38,15 @@ def wait_for_init_path(scylla_log: Path) -> None:
     with closing(tail(str(scylla_log.resolve()))) as t:
         wait_for_init(t)
 
-def is_running(pid: int):
+def is_running(pid: int) -> bool:
     try:
         os.kill(pid, 0)
     except OSError as err:
         if err.errno == errno.ESRCH:
             return False
     return True
+
+def write_executable_script(path: Path, body: str) -> None:
+    with open(path, 'w') as f:
+        f.write(body)
+    path.chmod(path.stat().st_mode | stat.S_IEXEC)
