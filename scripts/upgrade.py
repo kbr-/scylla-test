@@ -32,6 +32,7 @@ class TestConfig:
     ring_delay_ms: int
     enable_rbo: bool
     interactive: bool
+    first_node_skip_gossip_settle: bool
 
 def upgrade_test(cfg: TestConfig) -> None:
     cfg.run_path.mkdir(parents=True)
@@ -68,7 +69,7 @@ stall_notify_ms: {cfg.stall_notify_ms}
         ring_delay_ms = cfg.ring_delay_ms,
         hinted_handoff_enabled = False,
         enable_rbo = cfg.enable_rbo,
-        first_node_skip_gossip_settle = False,
+        first_node_skip_gossip_settle = cfg.first_node_skip_gossip_settle,
     )
 
     cfg_tmpl: dict = load_cfg_template()
