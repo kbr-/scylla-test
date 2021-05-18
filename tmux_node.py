@@ -113,62 +113,54 @@ class TmuxNode:
         self.window = sess.new_window(
             window_name = self.name, start_directory = self.path, attach = False)
 
+        self.window.panes[0].send_keys('ulimit -Sn $(ulimit -Hn)')
+        self.window.panes[0].send_keys('ulimit -Sn')
+
     def log(self, *args, **kwargs) -> None:
         self.logger.info(*args, **kwargs)
 
     # Start node and wait for initialization.
-    # Assumes that `start` wasn't called yet.
+    # Assumes that the node is not running.
     def start(self) -> None:
-        self.window.panes[0].send_keys('ulimit -Sn $(ulimit -Hn)')
-        self.window.panes[0].send_keys('ulimit -Sn')
         self.window.panes[0].send_keys('./run.sh')
-
         log_file = self.path / 'scyllalog'
-        self.log(f'Waiting for node {self.name} to initialize...')
+        self.log(f'Waiting for node {self.name} to start...')
         while not log_file.is_file():
             time.sleep(1)
         wait_for_init_path(log_file)
-        self.log(f'Node {self.name} initialized.')
+        self.log(f'Node {self.name} started.')
 
         with open(self.path / 'scylla.pid') as pidfile:
             self.pid = int(pidfile.read())
 
-    def restart(self) -> None:
+    def stop(self) -> None:
         self.log(f'Killing node {self.name} with SIGTERM...')
         os.kill(self.pid, signal.SIGTERM)
         while is_running(self.pid):
             time.sleep(1)
 
-        self.window.panes[0].send_keys('./run.sh')
-        log_file = self.path / 'scyllalog'
-        self.log(f'Waiting for node {self.name} to restart...')
-        while not log_file.is_file():
-            time.sleep(1)
-        wait_for_init_path(log_file)
-        self.log(f'Node {self.name} restarted.')
+    def restart(self) -> None:
+        self.stop()
+        self.start()
 
-        with open(self.path / 'scylla.pid') as pidfile:
-            self.pid = int(pidfile.read())
-
-    def hard_restart(self) -> None:
+    def hard_stop(self) -> None:
         self.log(f'Killing node {self.name} with SIGKILL...')
         os.kill(self.pid, signal.SIGKILL)
         while is_running(self.pid):
             time.sleep(1)
 
-        self.window.panes[0].send_keys('./run.sh')
-        log_file = self.path / 'scyllalog'
-        self.log(f'Waiting for node {self.name} to restart...')
-        while not log_file.is_file():
-            time.sleep(1)
-        wait_for_init_path(log_file)
-        self.log(f'Node {self.name} restarted.')
-
-        with open(self.path / 'scylla.pid') as pidfile:
-            self.pid = int(pidfile.read())
+    def hard_restart(self) -> None:
+        self.hard_stop()
+        self.start()
 
     def pause(self) -> None:
         os.kill(self.pid, signal.SIGSTOP)
 
     def unpause(self) -> None:
         os.kill(self.pid, signal.SIGCONT)
+
+    def reset_scylla_path(self, scylla_path: Path) -> None:
+        script_path = self.path / 'run.sh'
+        with open(script_path, 'w') as f:
+            f.write(mk_run_script(self.env.opts, scylla_path))
+        script_path.chmod(script_path.stat().st_mode | stat.S_IEXEC)
