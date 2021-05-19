@@ -33,6 +33,8 @@ class TestConfig:
     enable_rbo: bool
     interactive: bool
     first_node_skip_gossip_settle: bool
+    experimental_1: List[str]
+    experimental_2: List[str]
 
 def upgrade_test(cfg: TestConfig) -> None:
     cfg.run_path.mkdir(parents=True)
@@ -70,6 +72,7 @@ stall_notify_ms: {cfg.stall_notify_ms}
         hinted_handoff_enabled = False,
         enable_rbo = cfg.enable_rbo,
         first_node_skip_gossip_settle = cfg.first_node_skip_gossip_settle,
+        experimental = cfg.experimental_1
     )
 
     cfg_tmpl: dict = load_cfg_template()
@@ -128,6 +131,10 @@ stall_notify_ms: {cfg.stall_notify_ms}
 
         logger.info(f'Resetting Scylla binary path for node {n.ip()} to {cfg.scylla_path_2}.')
         n.reset_scylla_path(cfg.scylla_path_2)
+
+        if cfg.experimental_2 != cfg.experimental_1:
+            logger.info(f'Resetting experimental setting from {cfg.experimental_1} to {cfg.experimental_2}')
+            n.reset_node_config(replace(n.get_node_config(), experimental = cfg.experimental_2))
 
         logger.info(f'Restarting node {n.ip()}...')
         n.start()

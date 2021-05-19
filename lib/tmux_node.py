@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Final
 import libtmux
 import time
 import os
@@ -31,6 +32,7 @@ class ClusterConfig:
     hinted_handoff_enabled: bool
     enable_rbo: bool
     first_node_skip_gossip_settle: bool
+    experimental: List[str] = field(default_factory=list)
 
 @dataclass(frozen=True)
 class LocalNodeEnv:
@@ -74,7 +76,8 @@ def mk_cluster_env(start: int, num_nodes: int, opts: RunOpts, cluster_cfg: Clust
                     seed_ip_addr = ips[0],
                     ring_delay_ms = cluster_cfg.ring_delay_ms,
                     hinted_handoff_enabled = cluster_cfg.hinted_handoff_enabled,
-                    enable_rbo = cluster_cfg.enable_rbo),
+                    enable_rbo = cluster_cfg.enable_rbo,
+                    experimental = cluster_cfg.experimental),
                 opts = opts)
             for i in ips]
 
@@ -85,12 +88,7 @@ def mk_cluster_env(start: int, num_nodes: int, opts: RunOpts, cluster_cfg: Clust
     return envs
 
 class TmuxNode:
-    # name: str
-    # path: Path
-    # window: libtmux.Window
-    # env: LocalNodeEnv
-
-    # invariant: `window` has a single pane with initially bash running, with 'path' as cwd
+    # invariant: `self.window: Final[libtmux.Window]` has a single pane with initially bash running, with 'path' as cwd
 
     def ip(self) -> str:
         return self.env.cfg.ip_addr
@@ -98,11 +96,12 @@ class TmuxNode:
     # Create a directory for the node with configuration and run script,
     # create a tmux window, but don't start the node yet
     def __init__(self, logger: logging.Logger, cfg_tmpl: dict, base_path: Path, env: LocalNodeEnv, sess: libtmux.Session, scylla_path: Path):
-        self.logger = logger
-        self.name = env.cfg.ip_addr
-        self.path = base_path / self.name
+        self.logger: Final[logging.Logger] = logger
+        self.name: Final[str] = env.cfg.ip_addr
+        self.path: Final[Path] = base_path / self.name
+        self.conf_path: Final[Path] = self.path / 'conf'
+        self.cfg_tmpl: Final[dict] = cfg_tmpl
         self.env = env
-        self.no_kills = 0
 
         self.path.mkdir(parents=True)
         self.__write_run_script(scylla_path)
@@ -110,12 +109,10 @@ class TmuxNode:
 
         kill_script_path = self.path
 
-        conf_path = self.path / 'conf'
-        conf_path.mkdir(parents=True)
-        with open(conf_path / 'scylla.yaml', 'w') as f:
-            yaml.dump(mk_node_cfg(cfg_tmpl, self.env.cfg), f)
+        self.conf_path.mkdir(parents=True)
+        self.__write_conf()
 
-        self.window = sess.new_window(
+        self.window: Final[libtmux.Window] = sess.new_window(
             window_name = self.name, start_directory = self.path, attach = False)
 
         self.window.panes[0].send_keys('ulimit -Sn $(ulimit -Hn)')
@@ -164,6 +161,13 @@ class TmuxNode:
     def reset_scylla_path(self, scylla_path: Path) -> None:
         self.__write_run_script(scylla_path)
 
+    def get_node_config(self) -> NodeConfig:
+        return self.env.cfg
+
+    def reset_node_config(self, cfg: NodeConfig) -> None:
+        self.env = replace(self.env, cfg = cfg)
+        self.__write_conf()
+
     # Precondition: self.path directory exists
     def __write_run_script(self, scylla_path: Path) -> None:
         write_executable_script(
@@ -177,6 +181,11 @@ class TmuxNode:
             path = self.path / 'kill.sh',
             body = mk_kill_script()
         )
+
+    # Precondition: self.conf_path exists, self.env assigned
+    def __write_conf(self) -> None:
+        with open(self.conf_path / 'scylla.yaml', 'w') as f:
+            yaml.dump(mk_node_cfg(self.cfg_tmpl, self.env.cfg), f)
 
     def __log(self, *args, **kwargs) -> None:
         self.logger.info(*args, **kwargs)
