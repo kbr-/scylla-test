@@ -64,6 +64,11 @@ def mk_kill_script() -> str:
 kill $(cat scylla.pid)
 """
 
+def mk_hard_kill_script() -> str:
+    return """#!/bin/bash
+kill -9 $(cat scylla.pid)
+"""
+
 # IPs start from 127.0.0.{start}
 def mk_cluster_env(start: int, num_nodes: int, opts: RunOpts, cluster_cfg: ClusterConfig) -> List[LocalNodeEnv]:
     assert start + num_nodes <= 256
@@ -106,6 +111,7 @@ class TmuxNode:
         self.path.mkdir(parents=True)
         self.__write_run_script(scylla_path)
         self.__write_kill_script()
+        self.__write_hard_kill_script()
 
         kill_script_path = self.path
 
@@ -180,6 +186,13 @@ class TmuxNode:
         write_executable_script(
             path = self.path / 'kill.sh',
             body = mk_kill_script()
+        )
+
+    # Precondition: self.path directory exists
+    def __write_hard_kill_script(self) -> None:
+        write_executable_script(
+            path = self.path / 'hard-kill.sh',
+            body = mk_hard_kill_script()
         )
 
     # Precondition: self.conf_path exists, self.env assigned
