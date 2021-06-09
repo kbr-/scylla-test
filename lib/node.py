@@ -62,7 +62,7 @@ def mk_cluster_env(start: int, num_nodes: int, opts: RunOpts, cluster_cfg: Clust
 # TODO: better name, specification?
 # this encapsulates the "directory" of a node; where the configuration files are, paths, the node's "name", ip, ...
 class Node:
-    def __init__(self, cfg_tmpl: dict, base_path: Path, cfg: NodeConfig, scylla_path: Path):
+    def __init__(self, cfg_tmpl: dict, base_path: Path, cfg: NodeConfig):
         self.name: Final[str] = cfg.ip_addr
         self.path: Final[Path] = base_path / self.name
         self.conf_path: Final[Path] = self.path / 'conf'
