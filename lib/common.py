@@ -1,4 +1,4 @@
-from typing import Iterator, Tuple, Optional
+from typing import Generator, Tuple, Optional
 from pathlib import Path
 from contextlib import closing
 import stat
@@ -12,7 +12,7 @@ import os
 # If not able to retrieve a next line for 1 second, yields ''.
 # Remember to close it after usage, since it keeps the file opened.
 # For example, use "with contextlib.closing(tail(...)) as t: ..."
-def tail(path: str) -> Iterator[str]:
+def tail(path: str) -> Generator[str, None, None]:
     with subprocess.Popen(['tail', '-F', path, '-n', '+1'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT) as f:
         out = f.stdout
         if out is None:
@@ -28,7 +28,7 @@ def tail(path: str) -> Iterator[str]:
         while True:
             yield out.readline().decode('utf-8')
 
-def wait_for_init(scylla_log_lines: Iterator[str]) -> None:
+def wait_for_init(scylla_log_lines: Generator[str, None, None]) -> None:
     for l in scylla_log_lines:
         ms = re.match(r".*Scylla.*initialization completed.*", l)
         if ms:
