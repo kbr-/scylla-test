@@ -9,7 +9,7 @@ import select
 import datetime
 import yaml
 import stat
-import libtmux
+import libtmux # type: ignore
 import re
 import os
 import signal
@@ -20,11 +20,12 @@ import itertools
 import logging
 import sys
 
-from cassandra.cluster import Cluster, ExecutionProfile, EXEC_PROFILE_DEFAULT
-from cassandra import policies
+from cassandra.cluster import Cluster, ExecutionProfile, EXEC_PROFILE_DEFAULT # type: ignore
+from cassandra import policies # type: ignore
 
 from lib.node_config import *
 from lib.tmux_node import *
+from lib.node import mk_cluster_env
 
 def cdc_opts(mode: str):
     if mode == 'preimage':
@@ -48,14 +49,14 @@ class PauseNemesis:
             time.sleep(5)
             if not q.empty():
                 break
-            self.log('Nemesis: pausing {}'.format(self.n.ip()))
+            self.log('Nemesis: pausing {}'.format(self.n.node.ip()))
             self.n.pause()
             time.sleep(3 + random.randrange(0,2))
             if not q.empty():
                 break
-            self.log('Nemesis: unpausing {}'.format(self.n.ip()))
+            self.log('Nemesis: unpausing {}'.format(self.n.node.ip()))
             self.n.unpause()
-        self.log('Nemesis: asked to finish, unpausing {}'.format(self.n.ip()))
+        self.log('Nemesis: asked to finish, unpausing {}'.format(self.n.node.ip()))
         self.n.unpause()
 
     def start(self) -> None:
@@ -93,7 +94,7 @@ class RestartNemesis:
             if not q.empty():
                 break
             n = random.choice(self.ns)
-            self.log('Nemesis: {}restarting {}'.format('hard ' if self.hard else '', n.ip()))
+            self.log('Nemesis: {}restarting {}'.format('hard ' if self.hard else '', n.node.ip()))
             if self.hard:
                 n.hard_restart()
             else:
@@ -269,8 +270,8 @@ if __name__ == "__main__":
         TABLE_NAMES = [os.path.splitext(f)[0] for f in os.listdir('./cql/') if os.path.isfile(os.path.join('./cql/', f))]
     
     profile = ExecutionProfile(load_balancing_policy = policies.TokenAwarePolicy(policies.DCAwareRoundRobinPolicy()))
-    cm = Cluster([n.ip() for n in master_nodes], protocol_version = 4, execution_profiles={EXEC_PROFILE_DEFAULT: profile})
-    cr = Cluster([n.ip() for n in replica_nodes], protocol_version = 4, execution_profiles={EXEC_PROFILE_DEFAULT: profile})
+    cm = Cluster([n.node.ip() for n in master_nodes], protocol_version = 4, execution_profiles={EXEC_PROFILE_DEFAULT: profile})
+    cr = Cluster([n.node.ip() for n in replica_nodes], protocol_version = 4, execution_profiles={EXEC_PROFILE_DEFAULT: profile})
 
     w = tmux_sess.windows[0]
     w.split_window(start_directory = run_path, attach = False)
@@ -300,7 +301,7 @@ if __name__ == "__main__":
                 '--max-mutation-retries', '100', '--max-mutation-retries-backoff', '100ms',
                 '--replication-strategy', f"{{'class': 'SimpleStrategy', 'replication_factor': '{num_master_nodes}'}}",
                 '--table-options', "cdc = {}".format(cdc_opts(mode)),
-                '--test-cluster={}'.format(master_nodes[0].ip()),
+                '--test-cluster={}'.format(master_nodes[0].node.ip()),
                 '--seed', str(gemini_seed),
                 '--verbose',
                 '--level', 'info',
@@ -311,7 +312,7 @@ if __name__ == "__main__":
             stressor_proc = stack.enter_context(subprocess.Popen([
                 './run_cqlsh.sh',
                 cqlsh_path,
-                master_nodes[0].ip()
+                master_nodes[0].node.ip()
             ], stdout=stressor_log, stderr=subprocess.STDOUT))
         else:
             prof_file = 'cdc_replication_profile_single.yaml' if args.single else 'cdc_replication_profile.yaml'
@@ -319,7 +320,7 @@ if __name__ == "__main__":
                 'cassandra-stress',
                 "user no-warmup profile={} ops(update=1) cl=QUORUM duration={}s".format(prof_file, duration),
                 "-port jmx=6868", "-mode cql3", "native", "-rate threads=1", "-log level=verbose interval=5", "-errors retries=999 ignore",
-                "-node {}".format(master_nodes[0].ip())],
+                "-node {}".format(master_nodes[0].node.ip())],
                 stdout=stressor_log, stderr=subprocess.STDOUT))
 
         logger.info('Letting stressor run for a while...')
@@ -359,7 +360,7 @@ if __name__ == "__main__":
         logger.info('Starting replicator')
         repl_proc = stack.enter_context(subprocess.Popen([
             'java', '-cp', replicator_path, 'com.scylladb.cdc.replicator.Main',
-            '-k', KS_NAME, '-t', ','.join(TABLE_NAMES), '-s', master_nodes[0].ip(), '-d', replica_nodes[0].ip(), '-cl', 'one',
+            '-k', KS_NAME, '-t', ','.join(TABLE_NAMES), '-s', master_nodes[0].node.ip(), '-d', replica_nodes[0].node.ip(), '-cl', 'one',
             '-m', mode],
             stdout=repl_log, stderr=subprocess.STDOUT))
 
@@ -409,7 +410,7 @@ if __name__ == "__main__":
         migrate_res = subprocess.run(
             '{} check --master-address {} --replica-address {}'
             ' --ignore-schema-difference {} {}'.format(
-                migrate_path, master_nodes[0].ip(), replica_nodes[0].ip(),
+                migrate_path, master_nodes[0].node.ip(), replica_nodes[0].node.ip(),
                 '--no-writetime' if mode == 'postimage' else '',
                 ' '.join(map(lambda e: e[0] + '.' + e[1], zip(itertools.repeat(KS_NAME), TABLE_NAMES)))),
             shell = True, stdout = migrate_log, stderr = subprocess.STDOUT)

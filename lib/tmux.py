@@ -1,5 +1,5 @@
 from typing import Optional
-import libtmux
+import libtmux # type: ignore
 import os
 import sys
 
