@@ -1,7 +1,7 @@
 import sys
-from cassandra import ConsistencyLevel
-from cassandra.query import SimpleStatement
-from cassandra.cluster import Cluster
+from cassandra import ConsistencyLevel # type: ignore
+from cassandra.query import SimpleStatement # type: ignore
+from cassandra.cluster import Cluster # type: ignore
 
 ip = str(sys.argv[1])
 
