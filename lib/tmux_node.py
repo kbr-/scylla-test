@@ -46,8 +46,9 @@ class TmuxNode:
     # Create a directory for the node with configuration and run script,
     # create a tmux window, but don't start the node yet
     def __init__(self, logger: logging.Logger, cfg_tmpl: dict, base_path: Path, env: LocalNodeEnv, sess: libtmux.Session, scylla_path: Path):
-        self.node: Final[Node] = Node(cfg_tmpl, base_path, env, scylla_path)
+        self.node: Final[Node] = Node(cfg_tmpl, base_path, env.cfg, scylla_path)
         self.logger: Final[logging.Logger] = logger
+        self.opts: RunOpts = env.opts
 
         self.__write_run_script(scylla_path)
         self.__write_kill_script()
@@ -106,7 +107,7 @@ class TmuxNode:
     def __write_run_script(self, scylla_path: Path) -> None:
         write_executable_script(
             path = self.node.path / 'run.sh',
-            body = mk_run_script(self.node.env.opts, scylla_path)
+            body = mk_run_script(self.opts, scylla_path)
         )
 
     # Precondition: self.path directory exists

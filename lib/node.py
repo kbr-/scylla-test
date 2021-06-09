@@ -29,6 +29,7 @@ class ClusterConfig:
     first_node_skip_gossip_settle: bool
     experimental: List[str] = field(default_factory=list)
 
+# TODO: doesn't belong here?
 @dataclass(frozen=True)
 class LocalNodeEnv:
     cfg: NodeConfig
@@ -61,28 +62,28 @@ def mk_cluster_env(start: int, num_nodes: int, opts: RunOpts, cluster_cfg: Clust
 # TODO: better name, specification?
 # this encapsulates the "directory" of a node; where the configuration files are, paths, the node's "name", ip, ...
 class Node:
-    def __init__(self, cfg_tmpl: dict, base_path: Path, env: LocalNodeEnv, scylla_path: Path):
-        self.name: Final[str] = env.cfg.ip_addr
+    def __init__(self, cfg_tmpl: dict, base_path: Path, cfg: NodeConfig, scylla_path: Path):
+        self.name: Final[str] = cfg.ip_addr
         self.path: Final[Path] = base_path / self.name
         self.conf_path: Final[Path] = self.path / 'conf'
         self.cfg_tmpl: Final[dict] = cfg_tmpl
-        self.env = env
+        self.cfg: NodeConfig = cfg
 
         self.path.mkdir(parents=True)
         self.conf_path.mkdir(parents=True)
         self.__write_conf()
 
     def ip(self) -> str:
-        return self.env.cfg.ip_addr
+        return self.cfg.ip_addr
 
     def get_node_config(self) -> NodeConfig:
-        return self.env.cfg
+        return self.cfg
 
     def reset_node_config(self, cfg: NodeConfig) -> None:
-        self.env = replace(self.env, cfg = cfg)
+        self.cfg = cfg
         self.__write_conf()
 
-    # Precondition: self.conf_path exists, self.env assigned
+    # Precondition: self.conf_path exists, self.cfg assigned
     def __write_conf(self) -> None:
         with open(self.conf_path / 'scylla.yaml', 'w') as f:
-            yaml.dump(mk_node_cfg(self.cfg_tmpl, self.env.cfg), f)
+            yaml.dump(mk_node_cfg(self.cfg_tmpl, self.cfg), f)
