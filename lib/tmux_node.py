@@ -27,7 +27,7 @@ set -m
         path = scylla_path,
         smp = opts.smp,
         max_io_requests = opts.max_io_requests,
-        developer_mode = opts.developer_mode,
+        developer_mode = opts.developer_mode, # TODO fix
         skip_gossip_wait = '--skip-wait-for-gossip-to-settle 0' if opts.skip_gossip_wait else '',
         overprovisioned = '--overprovisioned' if opts.overprovisioned else '',
         stall_notify_ms = '--blocked-reactor-notify-ms {}'.format(opts.stall_notify_ms) if opts.stall_notify_ms else '')

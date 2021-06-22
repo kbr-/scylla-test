@@ -38,16 +38,13 @@ def mk_cluster_env(start: int, num_nodes: int, opts: RunOpts, cluster_cfg: Clust
 # this encapsulates the "directory" of a node; where the configuration files and workdir is
 class LocalNode:
     # Warning: replaces existing configuration
-    def __init__(self, base_path: Path, cfg: NodeConfig, exists_ok: bool = True):
+    def __init__(self, base_path: Path, cfg: NodeConfig, exist_ok: bool = True):
         self.path: Final[Path] = base_path
         self.__conf_path: Final[Path] = self.path / 'conf'
         self.__cfg: NodeConfig = cfg
 
-        if self.path.exists() and not exists_ok:
-            raise Exception(f'Path {self.path} already exists')
-
-        self.path.mkdir(parents=True)
-        self.__conf_path.mkdir(parents=True)
+        self.path.mkdir(parents=True, exist_ok=exist_ok)
+        self.__conf_path.mkdir(parents=True, exist_ok=True)
         self.__write_conf(append=True)
 
     def get_node_config(self) -> NodeConfig:
