@@ -47,8 +47,8 @@ class TmuxNode(Node):
 
     # Create a directory for the node with configuration and run script,
     # create a tmux window, but don't start the node yet
-    def __init__(self, logger: logging.Logger, cfg_tmpl: dict, base_path: Path, env: LocalNodeEnv, sess: libtmux.Session, scylla_path: Path):
-        self.__node: Final[LocalNode] = LocalNode(cfg_tmpl, base_path, env.cfg)
+    def __init__(self, logger: logging.Logger, base_path: Path, env: LocalNodeEnv, sess: libtmux.Session, scylla_path: Path):
+        self.__node: Final[LocalNode] = LocalNode(base_path, env.cfg)
         self.__logger: Final[logging.Logger] = logger
         self.__opts: RunOpts = env.opts
 

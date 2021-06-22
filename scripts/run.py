@@ -23,7 +23,7 @@ import sys
 from cassandra.cluster import Cluster, ExecutionProfile, EXEC_PROFILE_DEFAULT # type: ignore
 from cassandra import policies # type: ignore
 
-from lib.node_config import RunOpts, ClusterConfig, load_cfg_template
+from lib.node_config import RunOpts, ClusterConfig
 from lib.tmux_node import TmuxNode
 from lib.local_node import mk_cluster_env
 from lib.node import Node
@@ -185,8 +185,6 @@ if __name__ == "__main__":
         first_node_skip_gossip_settle = True,
     )
 
-    cfg_tmpl: dict = load_cfg_template()
-
     run_id: str = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
 
     runs_path = Path.cwd() / 'runs'
@@ -233,7 +231,7 @@ if __name__ == "__main__":
 
     master_envs = mk_cluster_env(start = 10, num_nodes = int(bootstrap_node) + num_master_nodes,
             opts = replace(RunOpts(), developer_mode = True, overprovisioned = True), cluster_cfg = cluster_cfg)
-    master_nodes: Sequence[Node] = [TmuxNode(logger, cfg_tmpl, run_path, e, tmux_sess, scylla_path) for e in master_envs]
+    master_nodes: Sequence[Node] = [TmuxNode(logger, run_path, e, tmux_sess, scylla_path) for e in master_envs]
 
     new_node = None
     if bootstrap_node:
@@ -249,7 +247,7 @@ if __name__ == "__main__":
 
     replica_envs = mk_cluster_env(start = 20, num_nodes = 1,
             opts = replace(RunOpts(), developer_mode = True, overprovisioned = True), cluster_cfg = cluster_cfg)
-    replica_nodes: Sequence[Node] = [TmuxNode(logger, cfg_tmpl, run_path, e, tmux_sess, scylla_path) for e in replica_envs]
+    replica_nodes: Sequence[Node] = [TmuxNode(logger, run_path, e, tmux_sess, scylla_path) for e in replica_envs]
 
     logger.info(f'tmux session name: {session_name}')
 

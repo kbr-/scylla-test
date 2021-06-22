@@ -36,12 +36,15 @@ class ClusterConfig:
     first_node_skip_gossip_settle: bool
     experimental: List[str] = field(default_factory=list)
 
-def load_cfg_template() -> dict:
+def __load_cfg_template() -> dict:
     with resources.open_binary('resources', 'scylla.yaml') as f:
         return yaml.load(f, Loader=yaml.FullLoader)
 
-def mk_node_cfg(tmpl: dict, cfg: NodeConfig) -> dict:
-    d = dict(tmpl, **{
+# TODO: is this OK?
+cfg_template: dict = __load_cfg_template()
+
+def mk_node_cfg(cfg: NodeConfig) -> dict:
+    d = dict(cfg_template, **{
             'listen_address': cfg.ip_addr,
             'rpc_address': cfg.ip_addr,
             'api_address': cfg.ip_addr,

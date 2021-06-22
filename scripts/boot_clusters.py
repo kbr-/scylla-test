@@ -10,17 +10,17 @@ import os
 import sys
 import logging
 
-from lib.node_config import RunOpts, ClusterConfig, load_cfg_template
+from lib.node_config import RunOpts, ClusterConfig
 from lib.local_node import mk_cluster_env
 from lib.tmux_node import TmuxNode
 from lib.node import Node
 
 def create_cluster(
         logger: logging.Logger,
-        cfg_tmpl: dict, run_path: Path, sess: libtmux.Session, scylla_path: Path,
+        run_path: Path, sess: libtmux.Session, scylla_path: Path,
         ip_start: int, num_nodes: int, opts: RunOpts, cluster_cfg: ClusterConfig) -> Sequence[Node]:
     envs = mk_cluster_env(ip_start, num_nodes, opts, cluster_cfg)
-    nodes = [TmuxNode(logger, cfg_tmpl, run_path, e, sess, scylla_path) for e in envs]
+    nodes = [TmuxNode(logger, run_path, e, sess, scylla_path) for e in envs]
     return nodes
 
 def boot(nodes: Sequence[Node]) -> Thread:
@@ -91,11 +91,9 @@ def boot_clusters(cfg: TestConfig):
         first_node_skip_gossip_settle = cfg.first_node_skip_gossip_settle
     )
 
-    cfg_tmpl: dict = load_cfg_template()
-
     ip_starts = itertools.accumulate([1] + cfg.num_nodes, operator.add)
     logger.info('Creating {} clusters...'.format(len(cfg.num_nodes)))
-    cs = [create_cluster(logger, cfg_tmpl, cfg.run_path, cfg.sess, cfg.scylla_path, ip_start, num, opts, cluster_cfg)
+    cs = [create_cluster(logger, cfg.run_path, cfg.sess, cfg.scylla_path, ip_start, num, opts, cluster_cfg)
             for ip_start, num in zip(ip_starts, cfg.num_nodes)]
 
     if cfg.start_clusters:

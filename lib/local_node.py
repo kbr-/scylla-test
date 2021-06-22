@@ -37,11 +37,10 @@ def mk_cluster_env(start: int, num_nodes: int, opts: RunOpts, cluster_cfg: Clust
 # TODO: better name, specification?
 # this encapsulates the "directory" of a node; where the configuration files are, paths, the node's "name", ip, ...
 class LocalNode:
-    def __init__(self, cfg_tmpl: dict, base_path: Path, cfg: NodeConfig):
+    def __init__(self, base_path: Path, cfg: NodeConfig):
         self.name: Final[str] = cfg.ip_addr
         self.path: Final[Path] = base_path / self.name
         self.conf_path: Final[Path] = self.path / 'conf'
-        self.cfg_tmpl: Final[dict] = cfg_tmpl
         self.cfg: NodeConfig = cfg
 
         self.path.mkdir(parents=True)
@@ -61,4 +60,4 @@ class LocalNode:
     # Precondition: self.conf_path exists, self.cfg assigned
     def __write_conf(self) -> None:
         with open(self.conf_path / 'scylla.yaml', 'w') as f:
-            yaml.dump(mk_node_cfg(self.cfg_tmpl, self.cfg), f)
+            yaml.dump(mk_node_cfg(self.cfg), f)
