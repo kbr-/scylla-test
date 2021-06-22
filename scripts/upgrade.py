@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Sequence
 from threading import Thread
 from dataclasses import dataclass, field, replace
 import argparse
@@ -14,11 +14,12 @@ import logging
 from lib.node_config import RunOpts, ClusterConfig, load_cfg_template
 from lib.local_node import mk_cluster_env
 from lib.tmux_node import TmuxNode
+from lib.node import Node
 
 def create_cluster(
         logger: logging.Logger,
         cfg_tmpl: dict, run_path: Path, sess: libtmux.Session, scylla_path: Path,
-        ip_start: int, num_nodes: int, opts: RunOpts, cluster_cfg: ClusterConfig) -> List[TmuxNode]:
+        ip_start: int, num_nodes: int, opts: RunOpts, cluster_cfg: ClusterConfig) -> Sequence[Node]:
     envs = mk_cluster_env(ip_start, num_nodes, opts, cluster_cfg)
     nodes = [TmuxNode(logger, cfg_tmpl, run_path, e, sess, scylla_path) for e in envs]
     return nodes
@@ -92,7 +93,7 @@ stall_notify_ms: {cfg.stall_notify_ms}
     for n in c:
         n.start()
 
-    node_map: Dict[int, str] = {i: c[i].node.ip() for i in range(len(c))}
+    node_map: Dict[int, str] = {i: c[i].ip() for i in range(len(c))}
     logger.info(f'Node map: {node_map}')
 
     ord: Optional[List[int]] = None
@@ -120,7 +121,7 @@ stall_notify_ms: {cfg.stall_notify_ms}
         ord = list(node_map.keys())
         random.shuffle(ord)
 
-    logger.info(f'Rolling upgrade order: {[c[i].node.ip() for i in ord]}')
+    logger.info(f'Rolling upgrade order: {[c[i].ip() for i in ord]}')
 
     assert ord and set(ord) == set(node_map.keys())
 
@@ -128,21 +129,21 @@ stall_notify_ms: {cfg.stall_notify_ms}
         n = c[i]
 
         if cfg.interactive:
-            inp = input(f'Press Enter to upgrade node {n.node.ip()}.')
+            inp = input(f'Press Enter to upgrade node {n.ip()}.')
 
-        logger.info(f'Stopping node {n.node.ip()}...')
+        logger.info(f'Stopping node {n.ip()}...')
         n.stop()
 
-        logger.info(f'Resetting Scylla binary path for node {n.node.ip()} to {cfg.scylla_path_2}.')
-        n.reset_scylla_path(cfg.scylla_path_2)
+        logger.info(f'Resetting Scylla binary path for node {n.ip()} to {cfg.scylla_path_2}.')
+        n.reset_scylla_binary(cfg.scylla_path_2)
 
         if cfg.experimental_2 != cfg.experimental_1:
             logger.info(f'Resetting experimental setting from {cfg.experimental_1} to {cfg.experimental_2}')
-            n.node.reset_node_config(replace(n.node.get_node_config(), experimental = cfg.experimental_2))
+            n.reset_node_config(replace(n.get_node_config(), experimental = cfg.experimental_2))
 
-        logger.info(f'Restarting node {n.node.ip()}...')
+        logger.info(f'Restarting node {n.ip()}...')
         n.start()
 
-        logger.info(f'Node {n.node.ip()} upgraded.')
+        logger.info(f'Node {n.ip()} upgraded.')
 
     logger.info(f'Upgrade finished.')

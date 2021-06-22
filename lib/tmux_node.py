@@ -8,8 +8,9 @@ import logging
 from dataclasses import replace
 
 from lib.common import wait_for_init_path, is_running, write_executable_script
-from lib.node_config import RunOpts, ClusterConfig
+from lib.node_config import RunOpts, ClusterConfig, NodeConfig
 from lib.local_node import LocalNodeEnv, LocalNode
+from lib.node import Node
 
 def mk_run_script(opts: RunOpts, scylla_path: Path) -> str:
     return """#!/bin/bash
@@ -41,22 +42,22 @@ def mk_hard_kill_script() -> str:
 kill -9 $(cat scylla.pid)
 """
 
-class TmuxNode:
+class TmuxNode(Node):
     # invariant: `self.window: Final[libtmux.Window]` has a single pane with initially bash running, with 'path' as cwd
 
     # Create a directory for the node with configuration and run script,
     # create a tmux window, but don't start the node yet
     def __init__(self, logger: logging.Logger, cfg_tmpl: dict, base_path: Path, env: LocalNodeEnv, sess: libtmux.Session, scylla_path: Path):
-        self.node: Final[LocalNode] = LocalNode(cfg_tmpl, base_path, env.cfg)
-        self.logger: Final[logging.Logger] = logger
-        self.opts: RunOpts = env.opts
+        self.__node: Final[LocalNode] = LocalNode(cfg_tmpl, base_path, env.cfg)
+        self.__logger: Final[logging.Logger] = logger
+        self.__opts: RunOpts = env.opts
 
         self.__write_run_script(scylla_path)
         self.__write_kill_script()
         self.__write_hard_kill_script()
 
         self.window: Final[libtmux.Window] = sess.new_window(
-            window_name = self.node.name, start_directory = self.node.path, attach = False)
+            window_name = self.__node.name, start_directory = self.__node.path, attach = False)
 
         self.window.panes[0].send_keys('ulimit -Sn $(ulimit -Hn)')
         self.window.panes[0].send_keys('ulimit -Sn')
@@ -65,18 +66,18 @@ class TmuxNode:
     # Assumes that the node is not running.
     def start(self) -> None:
         self.window.panes[0].send_keys('./run.sh')
-        log_file = self.node.path / 'scyllalog'
-        self.__log(f'Waiting for node {self.node.name} to start...')
+        log_file = self.__node.path / 'scyllalog'
+        self.__log(f'Waiting for node {self.__node.name} to start...')
         while not log_file.is_file():
             time.sleep(1)
         wait_for_init_path(log_file)
-        self.__log(f'Node {self.node.name} started.')
+        self.__log(f'Node {self.__node.name} started.')
 
-        with open(self.node.path / 'scylla.pid') as pidfile:
+        with open(self.__node.path / 'scylla.pid') as pidfile:
             self.pid = int(pidfile.read())
 
     def stop(self) -> None:
-        self.__log(f'Killing node {self.node.name} with SIGTERM...')
+        self.__log(f'Killing node {self.__node.name} with SIGTERM...')
         os.kill(self.pid, signal.SIGTERM)
         while is_running(self.pid):
             time.sleep(1)
@@ -86,7 +87,7 @@ class TmuxNode:
         self.start()
 
     def hard_stop(self) -> None:
-        self.__log(f'Killing node {self.node.name} with SIGKILL...')
+        self.__log(f'Killing node {self.__node.name} with SIGKILL...')
         os.kill(self.pid, signal.SIGKILL)
         while is_running(self.pid):
             time.sleep(1)
@@ -101,29 +102,38 @@ class TmuxNode:
     def unpause(self) -> None:
         os.kill(self.pid, signal.SIGCONT)
 
-    def reset_scylla_path(self, scylla_path: Path) -> None:
-        self.__write_run_script(scylla_path)
+    def ip(self) -> str:
+        return self.__node.ip()
+
+    def get_node_config(self) -> NodeConfig:
+        return self.__node.get_node_config()
+
+    def reset_node_config(self, cfg: NodeConfig) -> None:
+        self.__node.reset_node_config(cfg)
+
+    def reset_scylla_binary(self, binary_path: Path) -> None:
+        self.__write_run_script(binary_path)
 
     # Precondition: self.path directory exists
     def __write_run_script(self, scylla_path: Path) -> None:
         write_executable_script(
-            path = self.node.path / 'run.sh',
-            body = mk_run_script(self.opts, scylla_path)
+            path = self.__node.path / 'run.sh',
+            body = mk_run_script(self.__opts, scylla_path)
         )
 
     # Precondition: self.path directory exists
     def __write_kill_script(self) -> None:
         write_executable_script(
-            path = self.node.path / 'kill.sh',
+            path = self.__node.path / 'kill.sh',
             body = mk_kill_script()
         )
 
     # Precondition: self.path directory exists
     def __write_hard_kill_script(self) -> None:
         write_executable_script(
-            path = self.node.path / 'hard-kill.sh',
+            path = self.__node.path / 'hard-kill.sh',
             body = mk_hard_kill_script()
         )
 
     def __log(self, *args, **kwargs) -> None:
-        self.logger.info(*args, **kwargs)
+        self.__logger.info(*args, **kwargs)

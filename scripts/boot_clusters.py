@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Optional, List
+from typing import Optional, List, Sequence
 from threading import Thread
 from dataclasses import dataclass, field, replace
 import argparse
@@ -13,16 +13,17 @@ import logging
 from lib.node_config import RunOpts, ClusterConfig, load_cfg_template
 from lib.local_node import mk_cluster_env
 from lib.tmux_node import TmuxNode
+from lib.node import Node
 
 def create_cluster(
         logger: logging.Logger,
         cfg_tmpl: dict, run_path: Path, sess: libtmux.Session, scylla_path: Path,
-        ip_start: int, num_nodes: int, opts: RunOpts, cluster_cfg: ClusterConfig) -> List[TmuxNode]:
+        ip_start: int, num_nodes: int, opts: RunOpts, cluster_cfg: ClusterConfig) -> Sequence[Node]:
     envs = mk_cluster_env(ip_start, num_nodes, opts, cluster_cfg)
     nodes = [TmuxNode(logger, cfg_tmpl, run_path, e, sess, scylla_path) for e in envs]
     return nodes
 
-def boot(nodes: List[TmuxNode]) -> Thread:
+def boot(nodes: Sequence[Node]) -> Thread:
     def start():
         for n in nodes:
             n.start()
