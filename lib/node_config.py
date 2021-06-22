@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import List
+from typing import List, Optional
 from importlib import resources
 import yaml
 
@@ -10,6 +10,30 @@ class NodeConfig:
     ring_delay_ms: int
     hinted_handoff_enabled: bool
     enable_rbo: bool
+    experimental: List[str] = field(default_factory=list)
+
+@dataclass(frozen=True)
+class SeastarOpts:
+    smp: int = 3
+    max_io_requests: int = 4
+    overprovisioned: bool = False
+
+@dataclass(frozen=True)
+class ScyllaOpts:
+    developer_mode: bool = False
+    skip_gossip_wait: bool = False
+    stall_notify_ms: Optional[int] = None
+
+@dataclass(frozen=True)
+class RunOpts(SeastarOpts, ScyllaOpts):
+    pass
+
+@dataclass(frozen=True)
+class ClusterConfig:
+    ring_delay_ms: int
+    hinted_handoff_enabled: bool
+    enable_rbo: bool
+    first_node_skip_gossip_settle: bool
     experimental: List[str] = field(default_factory=list)
 
 def load_cfg_template() -> dict:

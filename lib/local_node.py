@@ -3,33 +3,8 @@ from typing import Optional, List, Final
 from dataclasses import dataclass, field, replace
 import yaml
 
-from lib.node_config import NodeConfig, mk_node_cfg
+from lib.node_config import NodeConfig, RunOpts, ClusterConfig, mk_node_cfg
 
-@dataclass(frozen=True)
-class SeastarOpts:
-    smp: int = 3
-    max_io_requests: int = 4
-    overprovisioned: bool = False
-
-@dataclass(frozen=True)
-class ScyllaOpts:
-    developer_mode: bool = False
-    skip_gossip_wait: bool = False
-    stall_notify_ms: Optional[int] = None
-
-@dataclass(frozen=True)
-class RunOpts(SeastarOpts, ScyllaOpts):
-    pass
-
-@dataclass(frozen=True)
-class ClusterConfig:
-    ring_delay_ms: int
-    hinted_handoff_enabled: bool
-    enable_rbo: bool
-    first_node_skip_gossip_settle: bool
-    experimental: List[str] = field(default_factory=list)
-
-# TODO: doesn't belong here?
 @dataclass(frozen=True)
 class LocalNodeEnv:
     cfg: NodeConfig
@@ -61,7 +36,7 @@ def mk_cluster_env(start: int, num_nodes: int, opts: RunOpts, cluster_cfg: Clust
 
 # TODO: better name, specification?
 # this encapsulates the "directory" of a node; where the configuration files are, paths, the node's "name", ip, ...
-class Node:
+class LocalNode:
     def __init__(self, cfg_tmpl: dict, base_path: Path, cfg: NodeConfig):
         self.name: Final[str] = cfg.ip_addr
         self.path: Final[Path] = base_path / self.name

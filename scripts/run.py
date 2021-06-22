@@ -2,7 +2,7 @@ from threading import Thread
 from contextlib import closing, ExitStack
 from dataclasses import replace
 from pathlib import Path
-from typing import Iterator, Tuple, Optional, Union
+from typing import Iterator, Tuple, Optional, Union, List
 import time
 import subprocess
 import select
@@ -23,9 +23,9 @@ import sys
 from cassandra.cluster import Cluster, ExecutionProfile, EXEC_PROFILE_DEFAULT # type: ignore
 from cassandra import policies # type: ignore
 
-from lib.node_config import *
-from lib.tmux_node import *
-from lib.node import mk_cluster_env
+from lib.node_config import RunOpts, ClusterConfig, load_cfg_template
+from lib.tmux_node import TmuxNode
+from lib.local_node import mk_cluster_env
 
 def cdc_opts(mode: str):
     if mode == 'preimage':

@@ -11,8 +11,8 @@ import sys
 import random
 import logging
 
-from lib.node_config import load_cfg_template
-from lib.node import RunOpts, ClusterConfig, mk_cluster_env
+from lib.node_config import RunOpts, ClusterConfig, load_cfg_template
+from lib.local_node import mk_cluster_env
 from lib.tmux_node import TmuxNode
 
 def create_cluster(

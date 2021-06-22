@@ -8,7 +8,8 @@ import logging
 from dataclasses import replace
 
 from lib.common import wait_for_init_path, is_running, write_executable_script
-from lib.node import RunOpts, ClusterConfig, LocalNodeEnv, Node
+from lib.node_config import RunOpts, ClusterConfig
+from lib.local_node import LocalNodeEnv, LocalNode
 
 def mk_run_script(opts: RunOpts, scylla_path: Path) -> str:
     return """#!/bin/bash
@@ -46,7 +47,7 @@ class TmuxNode:
     # Create a directory for the node with configuration and run script,
     # create a tmux window, but don't start the node yet
     def __init__(self, logger: logging.Logger, cfg_tmpl: dict, base_path: Path, env: LocalNodeEnv, sess: libtmux.Session, scylla_path: Path):
-        self.node: Final[Node] = Node(cfg_tmpl, base_path, env.cfg)
+        self.node: Final[LocalNode] = LocalNode(cfg_tmpl, base_path, env.cfg)
         self.logger: Final[logging.Logger] = logger
         self.opts: RunOpts = env.opts
 
