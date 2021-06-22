@@ -47,7 +47,9 @@ class TmuxNode(Node):
 
     # Create a directory for the node with configuration and run script,
     # create a tmux window, but don't start the node yet
+    # TODO define meaning of base_path
     def __init__(self, logger: logging.Logger, base_path: Path, env: LocalNodeEnv, sess: libtmux.Session, scylla_path: Path):
+        self.__name: str = env.cfg.ip_addr
         self.__node: Final[LocalNode] = LocalNode(base_path, env.cfg)
         self.__logger: Final[logging.Logger] = logger
         self.__opts: RunOpts = env.opts
@@ -56,30 +58,30 @@ class TmuxNode(Node):
         self.__write_kill_script()
         self.__write_hard_kill_script()
 
-        self.window: Final[libtmux.Window] = sess.new_window(
-            window_name = self.__node.name, start_directory = self.__node.path, attach = False)
+        self.__window: Final[libtmux.Window] = sess.new_window(
+            window_name = self.__name, start_directory = self.__node.path, attach = False)
 
-        self.window.panes[0].send_keys('ulimit -Sn $(ulimit -Hn)')
-        self.window.panes[0].send_keys('ulimit -Sn')
+        self.__window.panes[0].send_keys('ulimit -Sn $(ulimit -Hn)')
+        self.__window.panes[0].send_keys('ulimit -Sn')
 
     # Start node and wait for initialization.
     # Assumes that the node is not running.
     def start(self) -> None:
-        self.window.panes[0].send_keys('./run.sh')
+        self.__window.panes[0].send_keys('./run.sh')
         log_file = self.__node.path / 'scyllalog'
-        self.__log(f'Waiting for node {self.__node.name} to start...')
+        self.__log(f'Waiting for node {self.__name} to start...')
         while not log_file.is_file():
             time.sleep(1)
         wait_for_init_path(log_file)
-        self.__log(f'Node {self.__node.name} started.')
+        self.__log(f'Node {self.__name} started.')
 
         with open(self.__node.path / 'scylla.pid') as pidfile:
-            self.pid = int(pidfile.read())
+            self.__pid = int(pidfile.read())
 
     def stop(self) -> None:
-        self.__log(f'Killing node {self.__node.name} with SIGTERM...')
-        os.kill(self.pid, signal.SIGTERM)
-        while is_running(self.pid):
+        self.__log(f'Killing node {self.__name} with SIGTERM...')
+        os.kill(self.__pid, signal.SIGTERM)
+        while is_running(self.__pid):
             time.sleep(1)
 
     def restart(self) -> None:
@@ -87,9 +89,9 @@ class TmuxNode(Node):
         self.start()
 
     def hard_stop(self) -> None:
-        self.__log(f'Killing node {self.__node.name} with SIGKILL...')
-        os.kill(self.pid, signal.SIGKILL)
-        while is_running(self.pid):
+        self.__log(f'Killing node {self.__name} with SIGKILL...')
+        os.kill(self.__pid, signal.SIGKILL)
+        while is_running(self.__pid):
             time.sleep(1)
 
     def hard_restart(self) -> None:
@@ -97,13 +99,13 @@ class TmuxNode(Node):
         self.start()
 
     def pause(self) -> None:
-        os.kill(self.pid, signal.SIGSTOP)
+        os.kill(self.__pid, signal.SIGSTOP)
 
     def unpause(self) -> None:
-        os.kill(self.pid, signal.SIGCONT)
+        os.kill(self.__pid, signal.SIGCONT)
 
     def ip(self) -> str:
-        return self.__node.ip()
+        return self.__node.get_node_config().ip_addr
 
     def get_node_config(self) -> NodeConfig:
         return self.__node.get_node_config()

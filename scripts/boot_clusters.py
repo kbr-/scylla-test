@@ -20,7 +20,7 @@ def create_cluster(
         run_path: Path, sess: libtmux.Session, scylla_path: Path,
         ip_start: int, num_nodes: int, opts: RunOpts, cluster_cfg: ClusterConfig) -> Sequence[Node]:
     envs = mk_cluster_env(ip_start, num_nodes, opts, cluster_cfg)
-    nodes = [TmuxNode(logger, run_path, e, sess, scylla_path) for e in envs]
+    nodes = [TmuxNode(logger, run_path / e.cfg.ip_addr, e, sess, scylla_path) for e in envs]
     return nodes
 
 def boot(nodes: Sequence[Node]) -> Thread:

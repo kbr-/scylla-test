@@ -231,7 +231,7 @@ if __name__ == "__main__":
 
     master_envs = mk_cluster_env(start = 10, num_nodes = int(bootstrap_node) + num_master_nodes,
             opts = replace(RunOpts(), developer_mode = True, overprovisioned = True), cluster_cfg = cluster_cfg)
-    master_nodes: Sequence[Node] = [TmuxNode(logger, run_path, e, tmux_sess, scylla_path) for e in master_envs]
+    master_nodes: Sequence[Node] = [TmuxNode(logger, run_path / e.cfg.ip_addr, e, tmux_sess, scylla_path) for e in master_envs]
 
     new_node = None
     if bootstrap_node:
@@ -247,7 +247,7 @@ if __name__ == "__main__":
 
     replica_envs = mk_cluster_env(start = 20, num_nodes = 1,
             opts = replace(RunOpts(), developer_mode = True, overprovisioned = True), cluster_cfg = cluster_cfg)
-    replica_nodes: Sequence[Node] = [TmuxNode(logger, run_path, e, tmux_sess, scylla_path) for e in replica_envs]
+    replica_nodes: Sequence[Node] = [TmuxNode(logger, run_path / e.cfg.ip_addr, e, tmux_sess, scylla_path) for e in replica_envs]
 
     logger.info(f'tmux session name: {session_name}')
 
