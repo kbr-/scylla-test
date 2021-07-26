@@ -2,3 +2,7 @@ pyyaml
 cassandra-driver
 libtmux
 argparse
+fastapi
+uvicorn
+requests
+types-requests
