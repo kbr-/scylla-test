@@ -90,7 +90,8 @@ def boot_clusters(cfg: TestConfig):
         ring_delay_ms = cfg.ring_delay_ms,
         hinted_handoff_enabled = False,
         enable_rbo = cfg.enable_rbo,
-        first_node_skip_gossip_settle = cfg.first_node_skip_gossip_settle
+        first_node_skip_gossip_settle = cfg.first_node_skip_gossip_settle,
+        experimental = cfg.experimental
     )
 
     ip_starts = itertools.accumulate([1] + cfg.num_nodes, operator.add)
