@@ -45,6 +45,7 @@ class TestConfig:
     first_node_skip_gossip_settle: bool = True
     experimental: List[str] = field(default_factory=list)
     start_clusters: bool = True
+    extra: str = ''
 
 def boot_clusters(cfg: TestConfig):
     if any(n <= 0 for n in cfg.num_nodes):
@@ -82,7 +83,8 @@ def boot_clusters(cfg: TestConfig):
             developer_mode = True,
             smp = cfg.num_shards,
             overprovisioned = cfg.overprovisioned,
-            stall_notify_ms = cfg.stall_notify_ms)
+            stall_notify_ms = cfg.stall_notify_ms,
+            extra = cfg.extra)
 
     cluster_cfg = ClusterConfig(
         ring_delay_ms = cfg.ring_delay_ms,

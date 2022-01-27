@@ -23,6 +23,7 @@ class ScyllaOpts:
     developer_mode: bool = False
     skip_gossip_wait: bool = False
     stall_notify_ms: Optional[int] = None
+    extra: str = ''
 
 @dataclass(frozen=True)
 class RunOpts(SeastarOpts, ScyllaOpts):

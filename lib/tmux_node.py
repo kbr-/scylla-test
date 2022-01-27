@@ -22,6 +22,7 @@ set -m
     {overprovisioned} \\
     {skip_gossip_wait} \\
     {stall_notify_ms} \\
+    {extra} \\
     2>&1 & echo $! >&3) 3>scylla.pid | tee scyllalog &
 """.format(
         path = scylla_path,
@@ -30,7 +31,8 @@ set -m
         developer_mode = opts.developer_mode, # TODO fix
         skip_gossip_wait = '--skip-wait-for-gossip-to-settle 0' if opts.skip_gossip_wait else '',
         overprovisioned = '--overprovisioned' if opts.overprovisioned else '',
-        stall_notify_ms = '--blocked-reactor-notify-ms {}'.format(opts.stall_notify_ms) if opts.stall_notify_ms else '')
+        stall_notify_ms = '--blocked-reactor-notify-ms {}'.format(opts.stall_notify_ms) if opts.stall_notify_ms else '',
+        extra = opts.extra)
 
 def mk_kill_script() -> str:
     return """#!/bin/bash
