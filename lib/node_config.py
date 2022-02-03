@@ -6,7 +6,7 @@ import yaml
 @dataclass(frozen=True)
 class NodeConfig:
     ip_addr: str
-    seed_ip_addr: str
+    seed_ips: List[str]
     ring_delay_ms: int
     hinted_handoff_enabled: bool
     enable_rbo: bool
@@ -53,7 +53,7 @@ def mk_node_cfg(cfg: NodeConfig) -> dict:
             'seed_provider': [{
                 'class_name': 'org.apache.cassandra.locator.SimpleSeedProvider',
                 'parameters': [{
-                    'seeds': '{}'.format(','.join([cfg.seed_ip_addr]))
+                    'seeds': '{}'.format(','.join(cfg.seed_ips))
                     }]
                 }],
             'ring_delay_ms': cfg.ring_delay_ms,
