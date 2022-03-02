@@ -74,10 +74,11 @@ stall_notify_ms: {cfg.stall_notify_ms}
 
     cluster_cfg = ClusterConfig(
         ring_delay_ms = cfg.ring_delay_ms,
-        hinted_handoff_enabled = False,
-        enable_rbo = cfg.enable_rbo,
         first_node_skip_gossip_settle = cfg.first_node_skip_gossip_settle,
-        experimental = cfg.experimental_1
+        experimental = cfg.experimental_1,
+        extra = {
+            'enable_repair_based_node_ops': cfg.enable_rbo
+        }
     )
 
     ip_start = 1

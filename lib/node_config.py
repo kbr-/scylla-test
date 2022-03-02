@@ -8,9 +8,8 @@ class NodeConfig:
     ip_addr: str
     seed_ips: List[str]
     ring_delay_ms: int
-    hinted_handoff_enabled: bool
-    enable_rbo: bool
     experimental: List[str] = field(default_factory=list)
+    extra: dict = field(default_factory=dict)
 
 @dataclass(frozen=True)
 class SeastarOpts:
@@ -32,10 +31,9 @@ class RunOpts(SeastarOpts, ScyllaOpts):
 @dataclass(frozen=True)
 class ClusterConfig:
     ring_delay_ms: int
-    hinted_handoff_enabled: bool
-    enable_rbo: bool
     first_node_skip_gossip_settle: bool
     experimental: List[str] = field(default_factory=list)
+    extra: dict = field(default_factory=dict)
 
 def __load_cfg_template() -> dict:
     with resources.open_binary('resources', 'scylla.yaml') as f:
@@ -57,11 +55,11 @@ def mk_node_cfg(cfg: NodeConfig) -> dict:
                     }]
                 }],
             'ring_delay_ms': cfg.ring_delay_ms,
-            'hinted_handoff_enabled': cfg.hinted_handoff_enabled,
-            'enable_repair_based_node_ops': cfg.enable_rbo
         })
     if cfg.experimental:
         d = dict(d, **{
             'experimental_features': cfg.experimental
         })
+    if cfg.extra:
+        d = dict(d, **cfg.extra)
     return d

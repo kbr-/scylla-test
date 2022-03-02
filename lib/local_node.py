@@ -22,9 +22,8 @@ def mk_cluster_env(start: int, num_nodes: int, opts: RunOpts, cluster_cfg: Clust
                     ip_addr = i,
                     seed_ips = [ips[0]],
                     ring_delay_ms = cluster_cfg.ring_delay_ms,
-                    hinted_handoff_enabled = cluster_cfg.hinted_handoff_enabled,
-                    enable_rbo = cluster_cfg.enable_rbo,
-                    experimental = cluster_cfg.experimental),
+                    experimental = cluster_cfg.experimental,
+                    extra = cluster_cfg.extra),
                 opts = opts)
             for i in ips]
 

@@ -41,11 +41,11 @@ class TestConfig:
     overprovisioned: bool = True
     stall_notify_ms: Optional[int] = 10
     ring_delay_ms: int = 4000
-    enable_rbo: bool = False
     first_node_skip_gossip_settle: bool = True
     experimental: List[str] = field(default_factory=list)
     start_clusters: bool = True
-    extra: str = ''
+    extra_opts: str = ''
+    extra_cfg: dict = field(default_factory=dict)
 
 def boot_clusters(cfg: TestConfig):
     if any(n <= 0 for n in cfg.num_nodes):
@@ -84,14 +84,13 @@ def boot_clusters(cfg: TestConfig):
             smp = cfg.num_shards,
             overprovisioned = cfg.overprovisioned,
             stall_notify_ms = cfg.stall_notify_ms,
-            extra = cfg.extra)
+            extra = cfg.extra_opts)
 
     cluster_cfg = ClusterConfig(
         ring_delay_ms = cfg.ring_delay_ms,
-        hinted_handoff_enabled = False,
-        enable_rbo = cfg.enable_rbo,
         first_node_skip_gossip_settle = cfg.first_node_skip_gossip_settle,
-        experimental = cfg.experimental
+        experimental = cfg.experimental,
+        extra = cfg.extra_cfg
     )
 
     ip_starts = itertools.accumulate([1] + cfg.num_nodes, operator.add)
