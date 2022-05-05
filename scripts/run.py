@@ -138,6 +138,7 @@ if __name__ == "__main__":
     parser.add_argument('--with-restarts', default=False, action='store_true')
     parser.add_argument('--ring_delay_ms', type=int, default=3000)
     parser.add_argument('--enable-rbo', default=False, action='store_true')
+    parser.add_argument('--language', type=str, required=True)
     args = parser.parse_args()
 
     scylla_path: Path = args.scylla_path.resolve()
@@ -154,6 +155,12 @@ if __name__ == "__main__":
     gemini_concurrency: int = args.gemini_concurrency
     ring_delay_ms: int = args.ring_delay_ms
     enable_rbo : bool = args.enable_rbo
+    language: str = args.language
+
+    supported_languages = ('java', 'rust')
+    if language not in supported_languages:
+        print('Languages other than java or rust are not supported.')
+        exit(1)
 
     gemini_seed: int = args.gemini_seed
     if gemini_seed is None:
@@ -217,7 +224,8 @@ if __name__ == "__main__":
     duration: {duration}
     pauses: {with_pauses}
     restrats: {with_restarts}
-    ring_delay_ms: {ring_delay_ms}"""
+    ring_delay_ms: {ring_delay_ms}
+    language: {language}"""
     f"{gemini_log}"
     f"""
     run ID: {run_id}""")
@@ -357,12 +365,14 @@ if __name__ == "__main__":
         logger.info('Letting stressor run for a while...')
         time.sleep(5)
 
+        command_elements = [
+            replicator_path, '-k', KS_NAME, '-t', ','.join(TABLE_NAMES), '-s', master_nodes[0].ip(), '-d',
+            replica_nodes[0].ip()
+        ]
+        if language == 'java':
+            command_elements = ['java', '-cp'] + command_elements
         logger.info('Starting replicator')
-        repl_proc = stack.enter_context(subprocess.Popen([
-            'java', '-cp', replicator_path, 'com.scylladb.cdc.replicator.Main',
-            '-k', KS_NAME, '-t', ','.join(TABLE_NAMES), '-s', master_nodes[0].ip(), '-d', replica_nodes[0].ip(), '-cl', 'one',
-            '-m', mode],
-            stdout=repl_log, stderr=subprocess.STDOUT))
+        repl_proc = stack.enter_context(subprocess.Popen(command_elements, stdout=repl_log, stderr=subprocess.STDOUT))
 
         if nemeses:
             logger.info('Starting nemeses')
