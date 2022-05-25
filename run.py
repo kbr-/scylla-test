@@ -365,6 +365,7 @@ if __name__ == "__main__":
         logger.info('Letting stressor run for a while...')
         time.sleep(5)
 
+        start_datetime = (datetime.datetime.now().astimezone() - datetime.timedelta(minutes=5)).isoformat()
         command_elements = [
             replicator_path, '-k', KS_NAME, '-t', ','.join(TABLE_NAMES), '-s', master_nodes[0].ip(), '-d',
             replica_nodes[0].ip()
