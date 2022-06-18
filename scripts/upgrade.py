@@ -40,6 +40,7 @@ class TestConfig:
     first_node_skip_gossip_settle: bool
     experimental_1: List[str]
     experimental_2: List[str]
+    extra_opts: str = ''
 
 def upgrade_test(cfg: TestConfig) -> None:
     cfg.run_path.mkdir(parents=True)
@@ -55,22 +56,16 @@ def upgrade_test(cfg: TestConfig) -> None:
     logger = logging.getLogger()
     logger.info(
 f"""current session: {cfg.sess}
-Scylla binary before upgrade: {cfg.scylla_path_1}
-Scylla binary after upgrade: {cfg.scylla_path_2}
-run path: {cfg.run_path}
-number of nodes: {cfg.num_nodes}
-number of shards: {cfg.num_shards}
-overprovisioned: {cfg.overprovisioned}
-ring_delay_ms: {cfg.ring_delay_ms}
-enable_rbo: {cfg.enable_rbo}
-stall_notify_ms: {cfg.stall_notify_ms}
+config: {cfg}
 """)
 
     opts = replace(RunOpts(),
-            developer_mode = True,
-            smp = cfg.num_shards,
-            overprovisioned = cfg.overprovisioned,
-            stall_notify_ms = cfg.stall_notify_ms)
+        developer_mode = True,
+        smp = cfg.num_shards,
+        overprovisioned = cfg.overprovisioned,
+        stall_notify_ms = cfg.stall_notify_ms,
+        extra = cfg.extra_opts,
+    )
 
     cluster_cfg = ClusterConfig(
         ring_delay_ms = cfg.ring_delay_ms,
