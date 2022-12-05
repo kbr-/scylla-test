@@ -14,7 +14,6 @@ class NodeConfig:
 @dataclass(frozen=True)
 class SeastarOpts:
     smp: int = 3
-    max_io_requests: int = 4
     overprovisioned: bool = False
 
 @dataclass(frozen=True)

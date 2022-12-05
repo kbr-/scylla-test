@@ -17,7 +17,6 @@ def mk_run_script(opts: RunOpts, scylla_path: Path) -> str:
 set -m
 ({path} \\
     --smp {smp} \\
-    --max-io-requests {max_io_requests} \\
     --developer-mode={developer_mode} \\
     {overprovisioned} \\
     {skip_gossip_wait} \\
@@ -27,7 +26,6 @@ set -m
 """.format(
         path = scylla_path,
         smp = opts.smp,
-        max_io_requests = opts.max_io_requests,
         developer_mode = opts.developer_mode, # TODO fix
         skip_gossip_wait = '--skip-wait-for-gossip-to-settle 0' if opts.skip_gossip_wait else '',
         overprovisioned = '--overprovisioned' if opts.overprovisioned else '',

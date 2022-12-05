@@ -41,7 +41,6 @@ class SubprocessNode(Node):
 
             '--workdir', 'workdir',
             '--smp', f'{self.__opts.smp}',
-            '--max-io-requests', f'{self.__opts.max_io_requests}',
         ]
 
         if self.__opts.developer_mode:
