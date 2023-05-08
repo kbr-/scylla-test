@@ -40,6 +40,7 @@ python3 run.py \
     --scylla-path path/to/scylla/bin \
     --migrate-path path/to/scylla/migrate \
     --replicator-path path/to/cdc/replicator
+    --language java
 ```
 
 The tmux session name in which the test runs will be printed, e.g.:
